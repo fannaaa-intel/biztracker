@@ -42,6 +42,8 @@ Public NotInheritable Class AuditActions
     Public Const StatusChange As String = "STATUS_CHANGE"
     Public Const Upload As String = "UPLOAD"
     Public Const Print As String = "PRINT"
+
+    Public Shared ReadOnly All As String() = {Login, Logout, Insert, Update, Delete, StatusChange, Upload, Print}
 End Class
 
 ''' <summary>clearance_endorsements.office values (one row per office per business permit).</summary>

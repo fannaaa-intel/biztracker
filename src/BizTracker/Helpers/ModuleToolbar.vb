@@ -1,6 +1,7 @@
 ''' <summary>
 ''' The toolbar at the top of every module screen (same look as Business Permits):
-'''   left  : business selector (staff) or the owner's own business (fixed)
+'''   left  : business selector (staff) or the owner's own business (fixed),
+'''           or any other control (e.g. the Admin screen's tabs) given to the second constructor
 '''   right : action buttons; their labels switch to short versions when the window is narrow.
 ''' Raises BusinessChanged when another business is chosen.
 ''' </summary>
@@ -15,6 +16,10 @@ Public Class ModuleToolbar
     Private ReadOnly cboBusiness As New ComboBox()
     Private ReadOnly lblBusiness As New Label()
     Private ReadOnly actions As New FlowLayoutPanel()
+    ''' <summary>The control on the left: the business box, or a custom control.</summary>
+    Private ReadOnly leftControl As Control
+    Private ReadOnly leftMin As Integer = 220
+    Private ReadOnly leftMax As Integer = 380
     Private ReadOnly buttonTexts As New Dictionary(Of Button, String())   ' {full, short}
     Private ReadOnly tips As New ToolTip()
     Private loading As Boolean
@@ -27,6 +32,7 @@ Public Class ModuleToolbar
     ''' <param name="key">A name for the screen (e.g. "rpt") used to remember the last business.</param>
     Public Sub New(key As String)
         rememberKey = key
+        leftControl = businessBox
         Dock = DockStyle.Fill
         BackColor = Theme.ContentBackground
         Margin = New Padding(0)
@@ -67,7 +73,26 @@ Public Class ModuleToolbar
             tips.SetToolTip(cboBusiness, "Choose a business")
         End If
         Controls.Add(businessBox)
+        AddActionsPanel()
+    End Sub
 
+    ''' <summary>
+    ''' A toolbar without a business selector: "left" (e.g. SegmentedTabs) takes the left side and is
+    ''' sized between minWidth and maxWidth (100% pixels) next to the action buttons.
+    ''' </summary>
+    Public Sub New(left As Control, minWidth As Integer, maxWidth As Integer)
+        rememberKey = ""
+        leftControl = left
+        leftMin = minWidth
+        leftMax = maxWidth
+        Dock = DockStyle.Fill
+        BackColor = Theme.ContentBackground
+        Margin = New Padding(0)
+        Controls.Add(left)          ' the caller sets its top and height
+        AddActionsPanel()
+    End Sub
+
+    Private Sub AddActionsPanel()
         actions.Dock = DockStyle.Right
         actions.AutoSize = True
         actions.WrapContents = False
@@ -106,6 +131,11 @@ Public Class ModuleToolbar
         FitToolbar()
     End Sub
 
+    ''' <summary>Re-fits the labels after buttons were shown or hidden (e.g. when switching tabs).</summary>
+    Public Sub Refit()
+        FitToolbar()
+    End Sub
+
     ''' <summary>Changes a button's tooltip (e.g. to explain why it is disabled).</summary>
     Public Sub SetTip(btn As Button, text As String)
         tips.SetToolTip(btn, text)
@@ -125,8 +155,8 @@ Public Class ModuleToolbar
     Private Sub FitToolbar()
         If actions Is Nothing Then Return
         Dim gap = CInt(16 * DeviceDpi / 96.0)
-        Dim minBox = CInt(220 * DeviceDpi / 96.0)
-        Dim maxBox = CInt(380 * DeviceDpi / 96.0)
+        Dim minBox = CInt(leftMin * DeviceDpi / 96.0)
+        Dim maxBox = CInt(leftMax * DeviceDpi / 96.0)
         For Each useShort In {False, True}
             For Each kv In buttonTexts
                 SetButtonText(kv.Key, kv.Value(If(useShort, 1, 0)))
@@ -134,7 +164,13 @@ Public Class ModuleToolbar
             actions.PerformLayout()
             If ClientSize.Width - actions.PreferredSize.Width - gap >= minBox Then Exit For
         Next
-        businessBox.Width = Math.Max(minBox, Math.Min(maxBox, ClientSize.Width - actions.PreferredSize.Width - gap))
+        Dim room = ClientSize.Width - actions.PreferredSize.Width - gap
+        If leftControl Is businessBox Then
+            leftControl.Width = Math.Max(minBox, Math.Min(maxBox, room))
+        Else
+            ' A custom control (e.g. tabs) never slides under the buttons: it gets narrower instead
+            leftControl.Width = Math.Max(CInt(120 * DeviceDpi / 96.0), Math.Min(maxBox, room))
+        End If
     End Sub
 
     ''' <summary>Fills the business list (staff) or shows the owner's business, then raises BusinessChanged.</summary>

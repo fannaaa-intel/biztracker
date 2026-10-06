@@ -35,7 +35,7 @@ Public Class MainForm
         New NavItem With {.Screen = AppScreen.PermitVault, .Title = "Permit Vault", .Glyph = Icons.Lock,
                           .Section = "RECORDS", .Create = Function() New PermitVaultView()},
         New NavItem With {.Screen = AppScreen.Settings, .Title = "Settings", .Glyph = Icons.Settings,
-                          .Section = "ADMINISTRATION", .Create = Function() New SettingsView()}
+                          .Section = "ADMINISTRATION", .Create = Function() New AdminView()}
     }
 
     Private ReadOnly sidebar As New Panel()

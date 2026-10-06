@@ -104,13 +104,13 @@ Public NotInheritable Class Theme
     ''' <summary>1 = green, 2 = amber, 3 = red, 0 = gray.</summary>
     Private Shared Function StatusGroup(status As String) As Integer
         Select Case If(status, "").Trim().ToLowerInvariant()
-            Case "valid", "approved", "paid", "issued", "endorsed", "passed", "verified", "completed", "active"
+            Case "valid", "approved", "paid", "issued", "endorsed", "passed", "verified", "completed", "active", "ready"
                 Return 1
             Case "pending", "expiring soon", "submitted", "under review", "for assessment",
                  "assessed", "scheduled", "in progress", "pending upload", "due soon",
                  "lab analysis", "for inspection", "on hold", "unpaid", "late"
                 Return 2
-            Case "expired", "overdue", "rejected", "failed", "for re-inspection", "re-inspection", "cancelled", "not issued"
+            Case "expired", "overdue", "rejected", "failed", "for re-inspection", "re-inspection", "cancelled", "not issued", "not available"
                 Return 3
             Case Else
                 Return 0
@@ -144,4 +144,7 @@ Public NotInheritable Class Icons
     Public Const City As String = ChrW(&HE80F)
     Public Const Calendar As String = ChrW(&HE787)
     Public Const Build As String = ChrW(&HE8F1)
+    Public Const People As String = ChrW(&HE716)
+    Public Const Save As String = ChrW(&HE74E)
+    Public Const History As String = ChrW(&HE81C)
 End Class

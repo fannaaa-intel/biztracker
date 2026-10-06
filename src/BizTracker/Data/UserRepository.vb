@@ -7,25 +7,27 @@ Public NotInheritable Class UserRepository
     Private Sub New()
     End Sub
 
-    Private Const SelectSql As String = "SELECT * FROM users "
+    ''' <summary>Every query also reads the linked business name (Owner accounts) for display.</summary>
+    Private Const SelectSql As String =
+        "SELECT u.*, b.business_name FROM users u LEFT JOIN businesses b ON b.business_id = u.business_id "
 
     Public Shared Function GetAll() As List(Of User)
-        Return ToList(Db.GetDataTable(SelectSql & "ORDER BY role, username"))
+        Return ToList(Db.GetDataTable(SelectSql & "ORDER BY u.role, u.username"))
     End Function
 
     Public Shared Function GetById(userId As Integer) As User
-        Return ToList(Db.GetDataTable(SelectSql & "WHERE user_id = @id", Db.P("@id", userId))).FirstOrDefault()
+        Return ToList(Db.GetDataTable(SelectSql & "WHERE u.user_id = @id", Db.P("@id", userId))).FirstOrDefault()
     End Function
 
     ''' <summary>Used by login. Returns Nothing if the username does not exist.</summary>
     Public Shared Function GetByUsername(username As String) As User
-        Return ToList(Db.GetDataTable(SelectSql & "WHERE username = @username",
+        Return ToList(Db.GetDataTable(SelectSql & "WHERE u.username = @username",
                                       Db.P("@username", username.Trim()))).FirstOrDefault()
     End Function
 
     ''' <summary>Owner accounts linked to a business.</summary>
     Public Shared Function GetByBusinessId(businessId As Integer) As List(Of User)
-        Return ToList(Db.GetDataTable(SelectSql & "WHERE business_id = @bid ORDER BY username",
+        Return ToList(Db.GetDataTable(SelectSql & "WHERE u.business_id = @bid ORDER BY u.username",
                                       Db.P("@bid", businessId)))
     End Function
 
@@ -66,6 +68,12 @@ Public NotInheritable Class UserRepository
                                   Db.P("@active", isActive), Db.P("@id", userId)) > 0
     End Function
 
+    ''' <summary>Active Admin accounts (there must always be at least one).</summary>
+    Public Shared Function CountActiveAdmins() As Integer
+        Return Convert.ToInt32(Db.ExecuteScalar("SELECT COUNT(*) FROM users WHERE role = @role AND is_active = 1",
+                                                Db.P("@role", Roles.Admin)))
+    End Function
+
     Public Shared Function UpdateLastLogin(userId As Integer) As Boolean
         Return Db.ExecuteNonQuery("UPDATE users SET last_login = NOW() WHERE user_id = @id",
                                   Db.P("@id", userId)) > 0
@@ -87,6 +95,7 @@ Public NotInheritable Class UserRepository
             .BusinessId = row.GetNullableInt("business_id"),
             .IsActive = row.GetBool("is_active"),
             .LastLogin = row.GetNullableDate("last_login"),
+            .BusinessName = row.GetString("business_name"),
             .CreatedAt = row.GetDate("created_at")
         }
     End Function

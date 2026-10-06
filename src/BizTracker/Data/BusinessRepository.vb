@@ -48,6 +48,20 @@ Public NotInheritable Class BusinessRepository
                                   Db.P("@id", businessId)) > 0
     End Function
 
+    ''' <summary>
+    ''' Deactivates or reactivates a business together with its Owner login(s), as one unit of work:
+    ''' the owner of a closed business cannot sign in, and reactivating the business restores the login.
+    ''' </summary>
+    Public Shared Function SetActiveWithOwners(businessId As Integer, isActive As Boolean) As Boolean
+        Return Db.RunInTransaction(
+            Sub(conn, tx)
+                Db.TxExecute(conn, tx, "UPDATE businesses SET is_active = @active WHERE business_id = @id",
+                             Db.P("@active", isActive), Db.P("@id", businessId))
+                Db.TxExecute(conn, tx, "UPDATE users SET is_active = @active WHERE business_id = @id AND role = @role",
+                             Db.P("@active", isActive), Db.P("@id", businessId), Db.P("@role", Roles.Owner))
+            End Sub)
+    End Function
+
     ' ---------------- helpers ----------------
 
     Private Shared Function ToParameters(b As Business) As MySql.Data.MySqlClient.MySqlParameter()
