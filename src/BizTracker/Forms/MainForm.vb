@@ -319,7 +319,7 @@ Public Class MainForm
     End Sub
 
     Private Sub BtnLogout_Click(sender As Object, e As EventArgs)
-        If Not UiHelper.Confirm("Do you want to log out of BizTracker?", "Log out") Then Return
+        If Not UiHelper.Confirm("You will return to the sign-in screen.", "Log out of BizTracker?", "Log out", "Stay") Then Return
         LoggedOut = True
         AuthService.Logout()
         Close()

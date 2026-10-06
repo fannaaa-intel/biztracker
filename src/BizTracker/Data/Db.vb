@@ -215,7 +215,7 @@ Public NotInheritable Class Db
 
     ''' <summary>Shows a friendly message for a database error instead of crashing.</summary>
     Private Shared Sub ShowError(ex As Exception)
-        MessageBox.Show(FriendlyMessage(ex), "Database Error", MessageBoxButtons.OK, MessageBoxIcon.Error)
+        UiHelper.ShowError(FriendlyMessage(ex), "Database error")
     End Sub
 
     ''' <summary>Turns common MySQL error codes into plain-language messages.</summary>

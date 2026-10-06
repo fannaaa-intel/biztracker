@@ -55,4 +55,34 @@ Public NotInheritable Class AccessService
         Return role IsNot Nothing AndAlso role <> Roles.Owner
     End Function
 
+    ''' <summary>Staff roles that PROCESS each module (Admin can process everything).</summary>
+    Private Shared ReadOnly ManagerMap As New Dictionary(Of AppScreen, String()) From {
+        {AppScreen.BusinessPermits, {Roles.BPLO}},
+        {AppScreen.SanitaryPermits, {Roles.Health}},
+        {AppScreen.HealthCertificates, {Roles.Health}},
+        {AppScreen.RealPropertyTax, {Roles.Assessor}},
+        {AppScreen.AnnualInspections, {Roles.Inspector}},
+        {AppScreen.ConstructionPermits, {Roles.Building}}
+    }
+
+    ''' <summary>
+    ''' True if the logged-in user may process records in a module
+    ''' (change status, endorse, verify documents...). Owners never can.
+    ''' </summary>
+    Public Shared Function CanManage(screen As AppScreen) As Boolean
+        If Session.IsAdmin Then Return True
+        Dim managers As String() = Nothing
+        Return ManagerMap.TryGetValue(screen, managers) AndAlso managers.Contains(Session.Role)
+    End Function
+
+    ''' <summary>
+    ''' True if the logged-in user may see/act on a business's records:
+    ''' staff can see every business, an Owner only their own.
+    ''' </summary>
+    Public Shared Function CanSeeBusiness(businessId As Integer) As Boolean
+        If Not Session.IsLoggedIn Then Return False
+        If Session.IsOwner Then Return Session.BusinessId.HasValue AndAlso Session.BusinessId.Value = businessId
+        Return True
+    End Function
+
 End Class

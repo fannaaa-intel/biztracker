@@ -11,16 +11,6 @@ Public Class DashboardView
     End Sub
 End Class
 
-Public Class BusinessPermitView
-    Inherits ModuleView
-    Public Sub New()
-        ShowPlaceholder(Icons.Document, "Business Permits",
-                        "New and renewal applications, multi-agency endorsements, requirements, " &
-                        "assessment and issuance of the Mayor's Permit.",
-                        "Coming in Phase 5")
-    End Sub
-End Class
-
 Public Class SanitaryPermitView
     Inherits ModuleView
     Public Sub New()
