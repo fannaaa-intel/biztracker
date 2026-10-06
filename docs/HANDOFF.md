@@ -1,6 +1,6 @@
-# BizTracker — Handoff for the remaining phases (11 → 15)
+# BizTracker — Handoff for the remaining phases (14 → 15)
 
-Updated at the end of the session that built Phases 8, 9 and 10 (2026-10-06).
+Updated at the end of the session that built Phases 11, 12 and 13 (2026-10-06).
 Read **CLAUDE.md** and **WORK_ORDER.md** first, then this whole file. **CLAUDE.md wins** if anything here conflicts.
 
 ---
@@ -9,221 +9,169 @@ Read **CLAUDE.md** and **WORK_ORDER.md** first, then this whole file. **CLAUDE.m
 
 | Phase | Status | Commit |
 |---|---|---|
-| 1 Setup | ✅ done | `3882454 Setup: project scaffold` |
-| 2 Database | ✅ done | `183db02 Database: integrated biztracker_db` |
-| 3 Models / repositories / services | ✅ done | `7d1648c Phase 3: Models, repositories, core services` |
-| 4 Login, roles, main shell, theme | ✅ done | `e367333 Phase 4: Login, roles, main shell, theme` |
-| 5 Business Permit module | ✅ done | `d0a7b7c Phase 5: Business Permit module` |
-| 6 Health Certificates module | ✅ done | `e924977 Phase 6: Health Certificates module` |
-| 7 Sanitary Permit module | ✅ done | `774951f Phase 7: Sanitary Permit module` |
-| 8 Real Property Tax | ✅ done | `6dfd7d7 Phase 8: Real Property Tax` |
-| 9 Annual Inspection | ✅ done | `3f3bd6d Phase 9: Annual Inspection` |
-| 10 Construction Permit | ✅ done | `60fcecb Phase 10: Construction Permit` |
-| 11 Dashboard | ⏳ **next** | — |
-| 12 Notifications / alerts | ⏳ | — |
-| 13 Permit vault + printable documents | ⏳ (ask the user where the vault goes) | — |
-| 14 Admin tools | ⏳ | — |
+| 1–10 (setup → Construction Permit) | ✅ done | `60fcecb Phase 10: Construction Permit` and earlier |
+| 11 Dashboard | ✅ done | `e9feed3 Phase 11: Dashboard` |
+| 12 Notifications / alerts | ✅ done | `95ecadd Phase 12: Notifications / alerts` |
+| 13 Permit vault + printable documents | ✅ done | `9443685 Phase 13: Permit vault + printable documents` |
+| 14 Admin tools | ⏳ **next** | — |
 | 15 Testing, cleanup, demo prep | ⏳ | — |
 
-- GitHub: `https://github.com/fannaaa-intel/biztracker.git`, branch **`main`**, remote `origin` already set. `git push` after every phase commit.
+- GitHub: `https://github.com/fannaaa-intel/biztracker.git`, branch **`main`**, remote `origin` set. `git push` after every phase commit.
 - Home folder `C:\Users\DELL` is ALSO a git repo — always run git inside `C:\Users\DELL\source\repos\BizTracker`.
-- Last regression (end of Phase 10), all green:
+- Last regression (end of Phase 13), all green:
   DataTests 106 · BusinessPermitTests 68 · HealthCertificateTests 62 · SanitaryPermitTests 65 · RptTests 118 · InspectionTests 89 ·
-  ConstructionTests 91 · UiTests 259 · **overflow issues 0**.
-- The user's real `biztracker_db` was **not** re-imported since the Phase 7 seed changes (setting `sp_passing_score`, sanitary requirement
-  rows for permits 2 and 3). Phases 8–10 needed **no** seed changes. The code falls back to 75 if `sp_passing_score` is missing.
-  **Ask before re-importing.**
-- **The dev PC now runs at 150 % display scaling** (single 1920×1080 monitor; UiTests logs `DPI scale: 1.50`). See section 3 "DPI".
+  ConstructionTests 91 · DashboardTests 96 · AlertTests 65 · DocumentTests 111 · UiTests 396 · **overflow issues 0**.
+- The user's real `biztracker_db` was **not** re-imported since the Phase 7 seed changes. Phases 8–13 needed **no** seed changes.
+  **Ask before re-importing.** Notifications in the real DB are created at the user's first login (AlertService).
+- **Display scaling:** the user says the PC runs at 150 %, but during Phases 11–13 it was actually **100 %** (UiTests logs
+  `DPI scale: 1.00`; screenshots are 1920 px wide with a 260 px sidebar). Phases 11–13 were verified at 100 % only. Always check the
+  `INFO DPI scale:` line in `shots/results.txt` and tell the user which scaling was tested. If they switch back to 150 %, re-run the
+  regression and fix anything new (all new controls compute sizes from `DeviceDpi` / `Dpi()`, so it should hold).
+- **MySQL port clash (seen in Phase 11):** a Windows service `MySQL80` (MySQL 8.0) can grab port 3306; then XAMPP MariaDB cannot start
+  and the mysql client fails with `caching_sha2_password could not be loaded` (the app/test then hangs on a DB error box). Check with
+  `netstat -ano | findstr :3306` and `Get-Service MySQL80`. Do not stop services yourself — ask the user (they start MySQL in XAMPP).
 
 ---
 
 ## 2. The user's standing rules (keep them exactly)
 
-**Workflow (latest instructions from the user)**
+**Workflow**
 1. Follow **CLAUDE.md** strictly. If something is unclear or conflicts with CLAUDE.md, **ask** — do not guess.
-   (Phase 13: **ask where the Permit Vault goes** — Dashboard area or its own sidebar item — before building it.)
 2. **One phase at a time.** Before coding a phase, show a short plan (files to create/change), then build it.
 3. After coding: `dotnet build` with **0 errors, 0 warnings**.
 4. Run the **regression** (section 6, timeout 900000). Add a `<Module>Tests` suite for new logic and a UI deep check of the new screen
-   (DeepCheck + CheckDialog, both sizes, staff + owner, every tab and dialog). Verify the phase's "Check" from WORK_ORDER.md.
+   (DeepCheck + CheckDialog, both sizes, staff + owner where relevant, every tab and dialog). Verify the phase's "Check" from WORK_ORDER.md.
    **Open and look at the screenshots yourself** and fix every functional failure, overflow issue and visual problem; re-run until all green
    with 0 overflow issues.
 5. Then **commit `Phase X: <name>` and push to origin main**.
 6. Report **in the simplest form**: results table, what was done, bugs found and fixed, **what's left**, exactly what to click to test.
-7. **STOP** and wait for the user to reply **"next"** (they often ask "Did you run the regression? If yes continue" — answer yes/no
-   truthfully, then continue). If they report a bug, fix it first. If they ask for several phases at once, still do them one by one
-   (plan, build, regression, screenshots, commit + push each) and give one combined report. "Stop on phase X" = finish that phase's
-   regression, commit + push, report, stop. Short questions while you work: answer briefly and continue.
+7. **STOP** and wait for the user to reply **"next"** ("Next proceed" = go). If they report a bug, fix it first. If they ask for several
+   phases at once, still do them one by one (plan, build, regression, screenshots, commit + push each) and give one combined report.
+   "Stop on phase X" = finish that phase's regression, commit + push, report, stop. Short questions while you work: answer briefly and continue.
 8. Seed data changes go in **`database/biztracker_db.sql`**. **Never drop/re-import the user's `biztracker_db` without asking** —
    tests use the throw-away `biztracker_test` copy.
 9. Don't write handoff documents unless the user asks.
 
-**Access (decided by the user: "follow the claude.md")**
-- Dashboard is visible ONLY to Admin, BPLO and Owner (exactly the CLAUDE.md roles table). Health / Assessor / Building / Inspector land on
-  their own module. Already implemented in `AccessService`.
-- Owner = read-only for their own business; they may **upload requirements and file applications** (CLAUDE.md), nothing else.
-  (Owner can file: business permit, sanitary permit, construction project; can upload requirements/technical documents.)
+**Access (CLAUDE.md roles table — updated in Phase 13)**
+- Dashboard: Admin, BPLO, Owner. **Permit Vault** (own sidebar item, section "RECORDS"): Admin, BPLO, Owner (user's decision).
+  Settings / admin tools: Admin only. Health / Assessor / Building / Inspector land on their own module.
+- Owner = read-only for their own business; may **upload requirements and file applications** only.
 
-**UI / UX (the user asks for this every time — non-negotiable)**
-- **Modern, quality UI/UX** on every screen, same look as Business Permits / Sanitary / RPT / Inspections / Construction. Reuse the UI kit.
-- Main window opens **maximized**.
-- **NO visible scrollbars anywhere.** Grids: `ModernGrid` + `UiHelper.StyleGrid`. Lists: `WheelScrollPanel` ("Scroll for more ▾" strip).
-- **Nothing may overflow or be cut** at the minimum window (1100×680 logical) or maximized — **at 150 % scaling too**. AutoEllipsis +
-  tooltips, responsive grid columns, short button labels when narrow, short card notes (cards are narrow at 150 %).
-- **ALL messages use the animated `ModernMessageBox`** — never `MessageBox.Show`. `UiHelper.ShowInfo / ShowSuccess / ShowWarning /
-  ShowError / Confirm(message, title, yesText, noText, danger:=True)`. Success messages say what to do next.
-- Disabled buttons look disabled (automatic) and have a tooltip explaining WHY (`toolbar.SetTip`).
-- Every list has a helpful empty state; detail tabs have notes saying what is blocking / what to do next.
+**UI / UX (non-negotiable, asked every time)**
+- Modern UI, same look as the existing modules; reuse the UI kit. Main window opens **maximized**.
+- **NO visible scrollbars anywhere.** Grids: `ModernGrid` + `UiHelper.StyleGrid`. Lists: `WheelScrollPanel` ("Scroll for more ▾").
+- **Nothing may overflow or be cut** at 1100×680 or maximized (at 150 % too). AutoEllipsis + tooltips, responsive grid columns
+  (hide a column instead of cutting it — see `FitGridColumns` in ConstructionPermitView / RealPropertyTaxView / PermitVaultView),
+  short button labels when narrow, short card notes. The overflow scanner does NOT see owner-drawn text or AutoEllipsis cuts — **look at the screenshots**.
+- **ALL messages use the animated `ModernMessageBox`** via `UiHelper.ShowInfo / ShowSuccess / ShowWarning / ShowError /
+  Confirm(message, title, yesText, noText, danger:=…, warning:=…)` — never `MessageBox.Show`. Success messages say what to do next.
+- Disabled buttons look disabled (automatic) and have a tooltip explaining WHY (`toolbar.SetTip`). Every list has a helpful empty state.
 
 ---
 
 ## 3. Architecture already in place (reuse it — do not reinvent)
 
-**Data/** (the ONLY place with SQL; parameterized; `Using` blocks)
-- `Db.vb` — `Db.P("@x", value)`, `ExecuteNonQuery`, `ExecuteScalar`, `GetDataTable`, `ExecuteInsert` (new id), `RunInTransaction` +
-  `TxExecute` / `TxScalar`, `NullIfEmpty`. DB errors show a friendly box and return -1 / Nothing / empty (a console test hitting a DB error
-  hangs on the modal box — avoid failing SQL in tests).
-- Repositories (all `Shared`): Business, User, BusinessPermit (+ `GetEndorsements`, `SetEndorsement`), Requirement (`GetByModule`,
-  `Insert`, `SaveUpload`, `SetVerification`), Sanitary, Employee, HealthCertificate, **Property** (+ `PinExists`, `TdNoExists` — Phase 8),
-  **Rpt** (assessments + payments), **Inspection** (`Insert` creates 4 items, `GetItems`, `UpdateItem`), **Construction** (`Insert`
-  creates 4 clearances, `GetClearances`, `UpdateClearance`), Notification (`InsertIfNew`, `GetUnreadCount`, `MarkRead`, `MarkAllRead`),
-  Settings (cached), AuditLog (`GetRecent`), ReferenceNo.
+**Data/** (the ONLY place with SQL; parameterized; `Using` blocks) — `Db.vb` (`P`, `ExecuteNonQuery`, `ExecuteScalar`, `GetDataTable`,
+`ExecuteInsert`, `RunInTransaction`, `NullIfEmpty`; DB errors show a friendly box — a console test hitting a DB error hangs on it).
+Repositories (all `Shared`): Business (`GetAll(includeInactive)`, `GetById`, `Insert`, `Update`, `SoftDelete`), User (`GetAll`, `GetById`,
+`GetByUsername`, `GetByBusinessId`, `Insert`, `Update`, `UpdatePassword`, `SetActive`, `UpdateLastLogin`), BusinessPermit (+ endorsements),
+Requirement, Sanitary, Employee, HealthCertificate, Property, Rpt, Inspection, Construction, **Notification** (now JOINs `businesses`
+for `BusinessName` and skips inactive businesses; `Upsert` = insert or refresh, escalation to Urgent makes it unread; `GetById`),
+Settings (cached; `GetValue/GetInt/GetDecimal/Update` + reload), AuditLog (`Insert`, `GetRecent(limit)` — Phase 14 needs a filtered query), ReferenceNo.
 
-**Services/** — each module service: status constants, `Validate…` (field→message dictionary), `Get…Blocker` ("why not" text or
-Nothing), actions returning an **error message or Nothing** (or an outcome object), role checks inside (`AccessService.CanManage(screen)`,
-`CanSeeBusiness(id)`), audit logging.
-- `BusinessPermitService` (+ **`AutoEndorse(businessId, office, remarks)`** → reference no. or Nothing; `GetLatestApplication`).
-- `HealthCertificateService` (`GetRoster` → rows with computed Status), `SanitaryPermitService` (`GetCurrentPermit`, `GetDisplayStatus`,
-  `GetHealthCardSync`).
-- **`RptService`** (Phase 8): `ComputeTax`, `GetQuarterAmount` (Q4 takes the centavo remainder), `GetMonthsLate`, `ComputePenalty`
-  (2 %/month, part of a month counts, cap 72 %), `GetLedger(businessId, year)` → `RptLedgerRow` (RealProperty, Assessment, Quarters as
-  `RptQuarter` with Status/Penalty, `Balance`, `NextPayable`, `WorstStatus`), `GetAllQuarters`, `GetTotalDue(biz, year)`,
-  `GetOverdueQuarters(biz)` (all years), `GetOverdueAmount`, `GetTaxClearanceStatus` ("Issued"/"Not Issued"), `GetTaxClearanceNote`,
-  `ValidateProperty/AddProperty/UpdateProperty`, `GetAssessmentBlocker/GenerateAssessment` (years current−1…current+1),
-  `GetPaymentBlocker/ValidatePayment/RecordPayment` → `RptPaymentResult` (Payment, EndorsedReference). All due quarters paid → AutoEndorse RPT.
-- **`InspectionService`** (Phase 9): statuses Scheduled / In Progress / For Re-inspection / Completed / Cancelled; `GetInspections`,
-  `GetItems`, `GetCurrentInspection` (newest not cancelled), `GetPassedCount`, `GetEndorsementText` ("3 of 4 Depts Passed"),
-  `GetNextVisit`, `GetCertificateBlocker`, `GetScheduleBlocker`, `ValidateSchedule` (not past, 7 AM–5 PM, ≤12 months),
-  `ScheduleInspection`, `Reschedule`, `ScheduleReinspection`, `Cancel(reason)`, `GetRecordBlocker` (not before the schedule date),
-  `GetRecordableItems`, `ValidateResult`, `RecordResult` → `InspectionResultOutcome` (NewStatus, CertificateNo AIC-…, EndorsedReference).
-  Fire Passed → AutoEndorse Fire. Failed findings kept as "Earlier (date): …" history.
-- **`ConstructionService`** (Phase 10): Stages Locational → Building Permit → Construction → Occupancy → Completed (no skipping);
-  status Active / On Hold / Completed / Rejected; `GetProjects`, `GetClearances`, `GetDocuments`, `GetClearanceSummary` ("1 of 4 approved"),
-  `ValidateProject`, `FileProject` (owner allowed; 4 default documents), `UpdateProject`, `GetApproveBlocker` (stage reached; Building needs
-  FSEC Approved + all documents Verified), `ApproveClearance` → `ClearanceOutcome` (ClearanceNo, EndorsedReference; Locational → AutoEndorse
-  Zoning), `GetRejectBlocker/RejectClearance`, `GetAdvanceBlocker/Advance`, `GetReadyMessage`, `PutOnHold`, `ResumeProject`
-  (`Resume` is a VB keyword), `RejectProject`.
-- `StatusService`, `ReferenceNoService` (BP, MP, SP, HC, INS, AIC, CP, OR + clearance LC/FSEC/BLDG/OCC), `AuditService`, `AuthService`,
-  `RequirementService`, `AccessService`, `Session`.
+**Services/** — module services with status constants, `Validate…`, `Get…Blocker`, actions returning an error message or Nothing,
+role checks inside (`AccessService.CanManage(screen)`, `CanSeeBusiness(id)`, `CanAccess(screen)`), audit logging.
+- BusinessPermitService, HealthCertificateService, SanitaryPermitService, RptService, InspectionService, ConstructionService (see earlier phases).
+- **DashboardService** (Phase 11): `CanView`, `GetBusinesses` (owner's own / all active), `GetActionItems()` → `ActionItem` (BusinessId,
+  Screen, ModuleName, RelatedId, Title, Detail, ShortDetail, Status, IsUrgent, DueDate), `GetModuleSummaries()` → `ModuleSummary`
+  (Value, Status, Note, Detail, PendingCount, Progress/ProgressText/ProgressNote), `GetActionHeadline`, `DaysText`, `ShortDaysText`.
+- **AlertService** (Phase 12): `GenerateAlerts()` → `AlertRunResult` (Added/Updated/Resolved) — health certs, Mayor's / sanitary permit
+  validity, RPT quarters (overdue = Urgent, due soon = Warning), inspection / re-inspection visits (Info / Warning); resolved alerts are
+  marked read. `BuildAlerts(b)`, `GetNotifications(unreadOnly)` (owner = own business, staff = modules they can open), `GetUnreadCount`,
+  `GetUrgentUnread`, `GetUrgentSummary`, `GetUrgentTitle`, `MarkRead`, `MarkAllRead`, `ScreenFor(moduleName)`, `DueText`.
+- **DocumentService** (Phase 13): `CanView`, `GetDocuments(businessId)` → `IssuedDocument` (Kind from `DocumentKinds`, Title, ReferenceNo,
+  Holder, IssueDate, ValidUntil, Status, RelatedId, TableName, Screen, Fields, Rows), `CountByStatus`, `GetPrintBlocker` (expired =
+  no print), `GetVerificationCode` (SHA-256, "XXXXX-XXXXX"), `FindByReference`, `Verify(ref, code)` → `VerifyResult`.
+  Tax clearance number = `TC-YYYY-<business_id 5 digits>` (not stored).
+- **ReportService** (Phase 13): `BuildHtml(doc)` fills `Templates/_layout.html` + `_header.html` + `_footer.html` + one template per kind
+  (`{{key}}` values HTML-encoded, `{{rows}}` table rows), `Print(doc, openInBrowser)` → `PrintResult` (saves to
+  `%TEMP%\BizTracker\Documents\<ref>.html`, opens the default browser, logs `PRINT`). Templates are copied to the output folder by the .vbproj.
+- `StatusService`, `ReferenceNoService`, `AuditService` (`Log`, `LogInsert/Update/Delete/StatusChange/Login/Logout`), `AuthService`
+  (`Login`, `Logout`, `HashPassword` (BCrypt), lockout after 5 failures), `RequirementService`, `AccessService`, `Session`.
 
-**UI kit (Helpers/, Forms/, Modules/)**
-- `Theme.vb` (+ `StatusGroup` — add new status words there; Phase 8–10 added "not issued", "re-inspection" red).
-- `ModernControls.vb` (RoundedPanel, NavButton, IconButton, Avatar, StatusBadge), `LayoutControls.vb` (StepTracker — min height from font,
-  compact font for a long single word; SegmentedTabs — min height; WheelScrollPanel; StatCard; ValidityBar).
-- `ModuleToolbar.vb` — business ComboBox / owner label + actions. `AddAction(full, short, style, handler, visible)`, `SetTip`,
-  **`SetActionText(btn, full, short)`** (Phase 10, e.g. Put On Hold ↔ Resume Project).
-- `DetailRows.vb` — `InfoRow`, `ListRow(tips, title, detail, status, links, detailColor)`, `NoteRow`, `HeadingRow` (DPI-scaled).
-- `ModernGrid` + `UiHelper.StyleGrid(grid, "Status")` + `AddGridColumn`. RPT paints its own Q1–Q4 chips in a `CellPainting` handler added
-  after StyleGrid (see `RealPropertyTaxView`).
-- `UiHelper`: buttons, `CreateComboBox` (dialogs), `CreateInputBox` (search), `FormatMoney`, `FormatDate`, messages, **`Dpi(n)` /
-  `DpiScale`**, **`DisableMnemonics(root)`** (called from ModuleView, ModernDialog, MainForm, LoginForm — so "&" in data shows).
-- `ModernDialog` (scales itself once in OnLoad — see DPI), `PromptDialog.Ask(...)`, **`WorkflowDialog`** (current → next, blocker box,
-  advance + optional reject), `RequirementsPanel.LoadFor(...)` (reviewer of a Submitted file gets Verify/Reject, not Replace).
-- Module views to copy: **`RealPropertyTaxView`, `AnnualInspectionView`, `ConstructionPermitView`** (newest, DPI-correct), `SanitaryPermitView`.
-  Structure: root TableLayoutPanel (toolbar 56 / cards 110 / main) → cards row (3–4 StatCards) → list card (header `Dpi(48)` with title +
-  search `Dpi(38)`, ModernGrid, empty-state label) + detail card (header `Dpi(52)`, StepTracker, SegmentedTabs, WheelScrollPanels).
-  `loading` flag while binding; selection from `grid.SelectedRows`; dialogs get a fresh copy from the repository; reload keeping selection.
-- `Modules/PlaceholderViews.vb` — only `DashboardView` and `SettingsView` are left.
-- `MainForm` — `navItems` maps `AppScreen` → view factory; bell uses `NotificationRepository.GetUnreadCount` (`BtnBell_Click` is the
-  Phase 12 placeholder). **No navigation API yet** — Phase 11 must add one (see section 5).
+**UI kit**
+- `Theme.vb` (+ StatusGroup words), `ModernControls.vb` (RoundedPanel, NavButton, IconButton, Avatar, StatusBadge), `LayoutControls.vb`
+  (StepTracker, SegmentedTabs, WheelScrollPanel, StatCard, ValidityBar), **`DashboardControls.vb`** (WelcomeBanner, ModuleCard,
+  ProgressStrip, ActionRow — owner-drawn, DPI from `DeviceDpi`), `ModuleToolbar.vb`, `DetailRows.vb` (InfoRow, ListRow, NoteRow, HeadingRow),
+  `ModernGrid` + `UiHelper.StyleGrid` + `AddGridColumn`, `UiHelper` (Dpi, messages, `CreateComboBox`, `CreateInputBox`, `FormatMoney/Date`).
+- `ModernDialog` (+ `PromptDialog.Ask`), `WorkflowDialog`, `RequirementsPanel`, **`NotificationPopup`** (bell drop-down, borderless form),
+  **`VerifyDocumentDialog`**. Module views to copy: **`PermitVaultView`**, `ConstructionPermitView`, `RealPropertyTaxView`, `AnnualInspectionView`.
+- **Navigation API (Phase 11):** a view calls `RequestNavigate(screen, businessId)` (event `ModuleView.NavigateRequested`); MainForm
+  (`NavigateTo`) opens the screen deferred and the target toolbar selects that business (`ModuleView.SetPendingBusiness` /
+  `TakePendingBusiness`, honored by ModuleToolbar, BusinessPermitView, HealthCertificateView).
+- **MainForm:** `New MainForm(openedAfterLogin:=True)` from Program.vb generates alerts and shows the urgent summary (tests use the default
+  `New MainForm()` so no modal box appears). `OpenNotifications()` opens the bell popup. Sidebar sections OVERVIEW / SERVICES / RECORDS /
+  ADMINISTRATION; rows switch to compact heights automatically when the window is short (`SetCompactNav`). Ctrl+1–9 shortcuts.
+- `Modules/PlaceholderViews.vb` — only **`SettingsView`** is left (Phase 14 replaces it; move it to `Modules/SettingsView.vb` or an
+  `AdminView` and delete the placeholder file / `ShowPlaceholder` if unused).
 
-**DPI (150 % scaling) — must follow**
-- WinForms does NOT auto-scale the module views. Every pixel size you set in a view/row in code → wrap with **`Dpi(n)`** (header heights,
-  search box heights, badge heights, grid MinimumWidth, label bounds set in Resize handlers).
-- Dialogs: build at 100 % coordinates; `ModernDialog.OnLoad` scales them once (`Scale(DpiScale)`). Footer button widths are measured back in
-  100 % units. Don't call Dpi() inside dialogs.
-- Child layout inside a container that gets scaled: use the container's **`Layout`** event, not `Resize` (Resize runs before children are
-  scaled → double-scaled, overflowing children).
-- Card notes must be short (cards are ~250 px wide at 150 % min size). The overflow scanner does NOT catch AutoEllipsis cuts — **look at
-  the screenshots**.
+**DPI (must follow)**
+- Module views are NOT auto-scaled: every pixel size set in a view/row in code → `Dpi(n)`. Owner-drawn controls compute from `DeviceDpi`.
+- Dialogs: build at 100 % coordinates; `ModernDialog.OnLoad` scales them once. Don't call Dpi() inside dialogs.
+- Child layout inside a scaled container: use the **`Layout`** event (or `OnLayout`), not `Resize`.
 
 **Gotchas already hit (avoid them)**
-- VB reserved words as identifiers: `when`, `resume`, `err`, `text`/`name`/`left`/`width` (shadow Control members). Handler names like
-  `Add_Click` clash with events — use `AddProperty_Click`.
-- `List(Of T).Count(Function …)` resolves to the `Count` property → use `.AsEnumerable().Count(…)` or `.Where(…).Count()`.
-- Bash heredocs with `'` break — use the Write tool; python one-off edits are fine (beware `\\` in python strings).
-- Grid min widths: dates 112, status pills = text + 36 ("For Re-inspection" 140); long free text (titles) → hide the column when it does
-  not fit (see `ConstructionPermitView.FitGridColumns`), never let it cut.
-- Hidden docked controls are not laid out — `PerformLayout()` after showing a tab. Disposing a LinkLabel inside its click → ListRow defers.
-- Tests: compare decimals with `.ToString("0.00")`; dates by value; adding a settings row → update DataTests "settings count" (now 14).
-- Session-relative reference numbers in tests: seed max OR = 00031, INS = 00003, AIC = 00002, CP = 00001, LC = 00001.
+- VB reserved words / Control member names as identifiers (`when`, `resume`, `err`, `text`, `name`, `left`, `width`, **`Scale`** —
+  a property named Scale on a Control gives warning BC40004). Handler names like `Add_Click` clash with events.
+- `List(Of T).Count(Function …)` → use `.AsEnumerable().Count(…)` or `.Where(…).Count()`. `String.Join("|", {ints})` is ambiguous in VB.
+- Bash heredocs with `'` or python strings containing VB `'''` comments break — write a python script / text block with the Write tool.
+- Disposing a control inside its own click → defer with `BeginInvoke` (ListRow links, ActionRow, NotificationRow already do).
+- Grid min widths: dates 112, references 125–135 ("AIC-2026-00002" needs 129), status pills = text + 36. Long free text → hide the column.
+- UiTests: a TopMost MainForm covers a ModernMessageBox (use non-TopMost when capturing one); wait until `box.Opacity = 1` before a screenshot.
+  Restored (min-size) MainForm shots use `DrawToBitmap` (classic combos, no "Scroll for more" strip, no placeholders — not a bug).
+- Tests: decimals with `.ToString("0.00")`; dates by value; adding a settings row → update DataTests "settings count" (now 14);
+  a new AppScreen → update UiTests "Admin screens" count (now 9) and the role screen lists.
+- Session-relative numbers in tests: seed max OR = 00031, INS = 00003, AIC = 00002, CP = 00001, LC = 00001, HC (Y) = 00008.
 
 ---
 
 ## 4. Seed data facts (today-relative; re-import refreshes them)
 
-- Businesses: 1 Cristan's Bakeshop (food; owner user `owner`), 2 Santos General Merchandise (non-food), 3 Kusina ni Aling Rosa (food).
-  Users (password `password123`): admin, bplo, health (Dr. Paolo Agustin), assessor (Ramon Villanueva), building (Engr. Teresa Castillo),
-  inspector (Insp. Mark Del Rosario), owner (Cristan Dela Cruz → business 1).
-- Business permits: 1 BP-Y-00001 Issued; **2 BP-(Y+1)-00001 bakeshop Under Review** (Barangay/Sanitary/RPT/Zoning Endorsed, **Fire Pending**);
-  3, 4 Issued; **5 BP-(Y+1)-00002 Kusina Submitted** (all 5 endorsements Pending).
-- Health certs: bakeshop 10 active → 8 Valid, 1 Expiring Soon (Ben Reyes +20 d), 1 Expired (Lilah Espergal −5 d, Food Handler).
-  Santos 2 valid. Kusina 3: 2 valid + Noel Ramos (Food Handler) expired −40 d.
-- Sanitary: SP-Y-00001 bakeshop Issued, SP-Y-00002 Santos Issued (valid until Dec 31), SP-Y-00003 Kusina **For Inspection**.
-- RPT: bakeshop Land ₱40,000 (₱800/yr) + Building ₱15,000 (₱300/yr), every due quarter paid; Kusina Land ₱25,000 (₱500/yr) only Q1 paid →
-  Q2/Q3 **Overdue** (today Oct 6), Q4 not yet due. Kusina cards: Total Due ₱375, Overdue ₱262.50 (2 quarters), Tax Clearance Not Issued.
-- Inspections: INS-Y-00001 bakeshop **For Re-inspection** (3 of 4, Fire Failed, re-inspection +30 d); INS-Y-00002 Santos Completed
-  AIC-Y-00002; INS-Y-00003 Kusina Scheduled +14 d (results can't be recorded before that date).
-- Construction: CP-Y-00001 bakeshop "Warehouse Renovation & Extension", Building Permit stage, ₱850,000; Locational Approved LC-Y-00001,
-  FSEC/Building/Occupancy Pending; documents 3 Verified + "Plumbing / Sanitary Plans" Submitted. Kusina and Santos have no projects.
-- Notifications table is empty on purpose (Phase 12 fills it). 14 settings keys incl. `sp_passing_score`.
+- Businesses: 1 Cristan's Bakeshop (food; owner user `owner`, user_id 7), 2 Santos General Merchandise, 3 Kusina ni Aling Rosa.
+  Users (password `password123`): admin (1), bplo (2, Liza Ramirez), health (3), assessor (4), building (5), inspector (6), owner (7).
+- Business permits: 1 MP-Y-00001 Issued; **2 BP-(Y+1)-00001 bakeshop Under Review** (Fire Pending); 3, 4 Issued; **5 BP-(Y+1)-00002 Kusina Submitted**.
+- Health certs: bakeshop 10 → 8 Valid, Ben Reyes Expiring (+20 d), Lilah Espergal Expired (−5 d). Santos 2 valid. Kusina 3: Noel Ramos expired (−40 d).
+- Sanitary: SP-Y-00001 / 00002 Issued, SP-Y-00003 Kusina For Inspection. RPT: bakeshop paid through Q3; Kusina Q2/Q3 overdue (₱262.50).
+- Inspections: INS-Y-00001 bakeshop For Re-inspection (+30 d), INS-Y-00002 Santos Completed AIC-Y-00002, INS-Y-00003 Kusina Scheduled +14 d.
+- Construction: CP-Y-00001 bakeshop, Building Permit stage, LC-Y-00001 approved.
+- Dashboard: owner 4 action items; admin/BPLO 12. Alerts after login: 7 (bakeshop 3, Kusina 4). Vault: bakeshop 21 documents
+  (19 valid / 1 expiring / 1 expired), Santos 6, Kusina 6. 14 settings keys incl. `sp_passing_score`.
 
 ---
 
 ## 5. Remaining phases — notes (WORK_ORDER.md has the official spec + "Check")
 
-### Phase 11 — Dashboard (`DashboardView`; Admin, BPLO, Owner only)
-- Replace the `DashboardView` placeholder (move it to `Modules/DashboardView.vb`).
-- "Welcome, <name>" and "**Action Required: N items need attention**", N computed from the module services (no separate SQL counts):
-  expiring/expired health certs (`HealthCertificateService.GetRoster`), overdue RPT quarters (`RptService.GetOverdueQuarters`), pending
-  endorsements (`BusinessPermitRepository.GetEndorsements` of the latest non-final application), failed inspection items
-  (`InspectionService`), business/sanitary permits expiring within `expiry_warning_days` (`StatusService.GetExpiryStatus`). List the items
-  as clickable rows (WheelScrollPanel) that open the module.
-- Six module cards (Business Permit, Sanitary, RPT, Health Certificates, Annual Inspection, Construction): live status badge, key reference,
-  "Open" button. **Navigation**: add `Public Event NavigateRequested(screen As AppScreen)` on `ModuleView` (or `MainForm.Navigate(screen)`),
-  handled by MainForm (Phase 12 notifications will reuse it).
-- Owner: their own business. Admin/BPLO: totals across ALL businesses (pending applications per module) — optionally a business selector.
-- **Every number must equal the module screens** — WORK_ORDER check. Test in UiTests by opening the dashboard and each module and comparing
-  card values (use `CardValues`). Add a `DashboardTests` console suite for the counting logic if it lives in a service (e.g. `DashboardService`).
-- Note: BPLO cannot open the other modules (sidebar) — on their dashboard, module cards for screens they cannot access show info only (no
-  "Open", or a disabled one with a tooltip). Check `AccessService.CanAccess`.
-
-### Phase 12 — Notifications
-- `AlertService.GenerateAlerts()` after login: expiries/dues within `expiry_warning_days` + overdue items (health certs, sanitary + business
-  permit validity, RPT quarters, re-inspection dates) → `NotificationRepository.InsertIfNew` (UNIQUE business/module/related/due_date).
-  Priority: Urgent = expired/overdue, Warning = within warning days.
-- Bell (MainForm) → modern popup (WheelScrollPanel, no scrollbars), mark read / mark all read, click opens the module (Phase 11 navigation).
-  Owner sees only their business; staff see the modules they can access.
-- Pop-up summary after login when urgent items exist. Check: log in twice → no duplicates.
-
-### Phase 13 — Permit vault + printable documents
-- `ReportService` fills HTML templates in `Templates/` (copy to output in the .vbproj) and opens the default browser. Templates: Mayor's/
-  Business Permit, Sanitary Permit, Health Certificate (card), Tax Order of Payment, RPT Official Receipt / Tax Clearance, Annual Inspection
-  Certificate, Building/Occupancy clearance — LGU header from settings, reference no, dates, verification code. HTML-encode every value.
-  Only Issued documents print. Log `PRINT` to audit.
-- **Ask the user**: Permit Vault as a Dashboard area or its own sidebar item? (A sidebar item changes the CLAUDE.md access table → ask.)
-- "Verify Document" screen: reference no → valid / expired / not found.
-
-### Phase 14 — Admin tools (replace `SettingsView`; Admin only)
-- Tabs: Users (add, edit role, reset password, activate/deactivate — not yourself; Owner users need a business), Businesses (add/edit/
-  deactivate = soft delete, create the Owner account), Settings (validated edit, `SettingsRepository.Update` + `Reload`), Audit Log (filters
-  date range, user, table), Backup (`C:\xampp\mysql\bin\mysqldump.exe -u root biztracker_db` → SaveFileDialog).
-- Check: create a new business + owner account and log in as that owner.
+### Phase 14 — Admin tools (replace `SettingsView`; Admin only; sidebar item "Settings" under ADMINISTRATION)
+- One screen with `SegmentedTabs`: **Users | Businesses | Settings | Audit Log | Backup** (same look as the modules: toolbar actions
+  per tab, list card + detail card, ModernGrid + search box above every grid). New `AdminService` (or `UserService` + `BusinessService`
+  + `SettingsService`) with validation dictionaries and role checks (`Session.IsAdmin`) + audit logging; dialogs on `ModernDialog`.
+- **Users:** list (username, name, role, business, active, last login), Add, Edit role/name, Reset password (BCrypt via
+  `AuthService.HashPassword`; show the temporary password once), Activate/Deactivate — **cannot deactivate yourself** (and keep at least one
+  active Admin). Owner users must have a business; staff must not. Username unique.
+- **Businesses:** registry (add / edit / deactivate = soft delete `is_active = 0`, never hard delete; FKs are RESTRICT) and
+  **"Create Owner Account"** for a business (one owner per business — check `UserRepository.GetByBusinessId`).
+- **Settings:** edit the `settings` table with validation per key (numbers / rates 0–1 / `MM-DD` date / text), `SettingsRepository.Update`
+  + cache reload; audit UPDATE with old → new value.
+- **Audit Log:** viewer with filters (date range, user, table, action) — add a parameterized filtered query to `AuditLogRepository`.
+- **Backup:** `C:\xampp\mysql\bin\mysqldump.exe -u root biztracker_db` → `SaveFileDialog` (.sql). Run it from a service with `Process`
+  (redirect stdout to the file), friendly error if the exe is missing. Tests must back up `biztracker_test`, never prompt.
+- Check: create a new business + owner account from scratch and log in as that owner (test it in an `AdminTests` suite and UiTests).
 
 ### Phase 15 — Testing, cleanup, demo prep
 - Review every form (validation, friendly errors, tab order, no SQL in forms, Using blocks, parameterized SQL); every grid has search;
-  resizing never breaks layout. Full regression.
-- `README.md` and `docs/TEST_CHECKLIST.md` (manual script per role with expected results).
+  resizing never breaks layout. Remove leftovers (`ShowPlaceholder`, `PlaceholderViews.vb` if empty, unused code). Full regression.
+- `README.md` (requirements, setup: XAMPP + import `database/biztracker_db.sql` + run, seeded logins, features) and
+  `docs/TEST_CHECKLIST.md` (manual script per role with expected results — use the seed facts above).
 
 ---
 
@@ -232,31 +180,29 @@ Nothing), actions returning an **error message or Nothing** (or an outcome objec
 Folder (outside the repo, on purpose): `C:\Users\DELL\source\repos\BizTracker_regression\`
 
 ```
-bash /c/Users/DELL/source/repos/BizTracker_regression/run_regression.sh      (timeout 900000 — takes ~7–9 min)
-bash /c/Users/DELL/source/repos/BizTracker_regression/run_ui_only.sh         (only UiTests, for quick UI iterations)
+bash /c/Users/DELL/source/repos/BizTracker_regression/run_regression.sh      (timeout 900000 — takes ~10–13 min)
+bash /c/Users/DELL/source/repos/BizTracker_regression/run_ui_only.sh         (only UiTests)
+bash /c/Users/DELL/source/repos/BizTracker_regression/dash_quick.sh          (UiTests "dash"  mode → shots_dash/)
+bash /c/Users/DELL/source/repos/BizTracker_regression/notif_quick.sh         (UiTests "notif" mode → shots_notif/)
+bash /c/Users/DELL/source/repos/BizTracker_regression/vault_quick.sh         (UiTests "vault" mode → shots_vault/)
 ```
-Builds the app, creates the throw-away `biztracker_test` from `database/biztracker_db.sql` (fresh before each suite), runs the console
-suites (`for suite in DataTests BusinessPermitTests HealthCertificateTests SanitaryPermitTests RptTests InspectionTests ConstructionTests`),
-then `UiTests`, prints a summary and drops `biztracker_test`. The real `biztracker_db` is never touched. Screenshots + `results.txt` in `shots/`.
+`run_regression.sh` builds the app, creates the throw-away `biztracker_test` from `database/biztracker_db.sql` (fresh before each suite),
+runs `for suite in DataTests BusinessPermitTests HealthCertificateTests SanitaryPermitTests RptTests InspectionTests ConstructionTests
+DashboardTests AlertTests DocumentTests`, then `UiTests`, prints a summary and drops `biztracker_test`. Screenshots + `results.txt` in `shots/`.
 
 **For each new phase**
-1. New console suite: copy a suite folder (e.g. `ConstructionTests`: App.config → biztracker_test, .vbproj referencing the app, change
-   `RootNamespace`), test every service rule + the WORK_ORDER "Check" + owner/other-role restrictions + audit rows. Add it to the
-   `for suite in …` line.
-2. Extend `UiTests/Program.vb` **before the `' ---------- Dialogs ----------` block**: `DeepCheck(prefix, AppScreen.X, {"staffUser", "owner"},
-   Sub(u, size, view) Check(..., CardValues(view), "...") End Sub)`, a second-business block (switch the toolbar ComboBox), `CheckDialog`
-   for every dialog, plus one dialog with validation errors shown.
-3. Overflow scanner target: **0** (controls outside parents, clipped labels/buttons, cut grid cells/headers, visible scrollbars, hint-less
-   WheelScrollPanel, disabled buttons that look enabled).
-4. **Look at the screenshots** (Read the PNGs). Notes: restored (min-size) MainForm shots are rendered with `DrawToBitmap` (CopyFromScreen
-   captured VS Code instead) — in those shots the combo boxes look classic and the "Scroll for more" strip / placeholders may be missing
-   (z-order artifact), that is not a bug. Maximized shots and dialogs use CopyFromScreen. A Windows "Low Disk Space" toast may cover the
-   bottom-right corner.
+1. New console suite: copy a suite folder (App.config → biztracker_test, .vbproj referencing the app, change `RootNamespace`), test every
+   service rule + the WORK_ORDER "Check" + role restrictions + audit rows. Add it to the `for suite in …` line.
+2. UiTests: add a `Sub <Name>Checks()` (see `DashboardChecks`, `NotificationChecks`, `VaultChecks`), call it before the
+   `' ---------- Dialogs ----------` block, and add a quick mode (`args(1) = "admin"` etc.) plus a `<name>_quick.sh` copied from `vault_quick.sh`.
+   Use `DeepCheck(prefix, AppScreen.X, users, extra)`, `CheckDialog`, a validation-errors dialog shot, `CardValues(view)`.
+3. Overflow scanner target **0**. 4. **Look at the screenshots** (Read the PNGs) — at both sizes. A Windows Alt+Tab overlay or tooltip in a
+   shot is a capture artifact, not a bug.
 
 ---
 
 ## 7. How to run the app
 ```
-dotnet run --project src/BizTracker      (XAMPP MySQL must be running)
+dotnet run --project src/BizTracker      (XAMPP MySQL must be running on port 3306)
 ```
 Logins (password `password123`): admin, bplo, health, assessor, building, inspector, owner.
