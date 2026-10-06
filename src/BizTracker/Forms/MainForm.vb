@@ -57,7 +57,13 @@ Public Class MainForm
     ''' <summary>True when the user clicked Logout (Program then shows the login screen again).</summary>
     Public Property LoggedOut As Boolean
 
-    Public Sub New()
+    ''' <summary>True when opened right after signing in: alerts are generated and urgent ones are summarized.</summary>
+    Private ReadOnly afterLogin As Boolean
+    Private popup As NotificationPopup
+
+    ''' <param name="openedAfterLogin">True from Program (after the login screen); tests leave it False.</param>
+    Public Sub New(Optional openedAfterLogin As Boolean = False)
+        afterLogin = openedAfterLogin
         SuspendLayout()
         AutoScaleDimensions = New SizeF(96.0F, 96.0F)
         AutoScaleMode = AutoScaleMode.Dpi
@@ -274,6 +280,9 @@ Public Class MainForm
         End If
         tips.SetToolTip(lblUserRole, lblUserRole.Text)
 
+        ' Phase 12: scan due / expiry dates and save the alerts (no duplicates)
+        If afterLogin Then AlertService.GenerateAlerts()
+
         BuildNavigation()
         Dim screens = AccessService.GetScreens(Session.Role)
         If screens.Count > 0 Then ShowScreen(screens(0))
@@ -313,6 +322,11 @@ Public Class MainForm
     ''' Deferred, because opening a screen disposes the page whose button was clicked.
     ''' </summary>
     Private Sub View_NavigateRequested(screen As AppScreen, businessId As Integer?)
+        NavigateTo(screen, businessId)
+    End Sub
+
+    ''' <summary>Opens a screen (optionally on a business). Deferred so the caller's control can be disposed safely.</summary>
+    Public Sub NavigateTo(screen As AppScreen, Optional businessId As Integer? = Nothing)
         If Not AccessService.CanAccess(screen) Then Return
         BeginInvoke(Sub()
                         ModuleView.SetPendingBusiness(businessId)
@@ -320,17 +334,51 @@ Public Class MainForm
                     End Sub)
     End Sub
 
-    ''' <summary>Unread alerts: the owner's business only, or all businesses for staff.</summary>
-    Private Sub RefreshNotificationCount()
-        btnBell.BadgeCount = NotificationRepository.GetUnreadCount(If(Session.IsOwner, Session.BusinessId, Nothing))
+    ''' <summary>Unread alerts the user can see (own business for owners, own modules for staff).</summary>
+    Public Sub RefreshNotificationCount()
+        btnBell.BadgeCount = AlertService.GetUnreadCount()
+        tips.SetToolTip(btnBell, If(btnBell.BadgeCount = 0, "Notifications", btnBell.BadgeCount & " unread notification" & If(btnBell.BadgeCount = 1, "", "s")))
     End Sub
 
     Private Sub BtnBell_Click(sender As Object, e As EventArgs)
-        RefreshNotificationCount()
-        Dim count = btnBell.BadgeCount
-        UiHelper.ShowInfo(If(count = 0, "You have no unread notifications.",
-                             "You have " & count & " unread notification" & If(count = 1, "", "s") & ".") &
-                          vbCrLf & vbCrLf & "The full notification center arrives in Phase 12.", "Notifications")
+        ' Clicking the bell again closes the popup
+        If popup IsNot Nothing AndAlso Not popup.IsDisposed Then
+            popup.Close()
+            Return
+        End If
+        OpenNotifications()
+    End Sub
+
+    ''' <summary>Opens the notification popup under the bell.</summary>
+    Public Function OpenNotifications() As NotificationPopup
+        popup = New NotificationPopup()
+        AddHandler popup.ReadChanged, Sub() RefreshNotificationCount()
+        AddHandler popup.NotificationOpened,
+            Sub(n)
+                AlertService.MarkRead(n)
+                RefreshNotificationCount()
+                NavigateTo(AlertService.ScreenFor(n.ModuleName), n.BusinessId)
+            End Sub
+        AddHandler popup.FormClosed, Sub()
+                                         RefreshNotificationCount()
+                                         popup.Dispose()
+                                     End Sub
+        popup.ShowUnder(Me, btnBell.PointToScreen(New Point(btnBell.Width + 40, btnBell.Height + 14)))
+        Return popup
+    End Function
+
+    ''' <summary>After login: a summary of urgent (expired / overdue) alerts, if any.</summary>
+    Protected Overrides Sub OnShown(e As EventArgs)
+        MyBase.OnShown(e)
+        If afterLogin Then BeginInvoke(Sub() ShowUrgentSummary())
+    End Sub
+
+    Private Sub ShowUrgentSummary()
+        Dim summary = AlertService.GetUrgentSummary()
+        If summary Is Nothing Then Return
+        If UiHelper.Confirm(summary, AlertService.GetUrgentTitle(AlertService.GetUrgentUnread().Count), "View Notifications", "Later", warning:=True) Then
+            OpenNotifications()
+        End If
     End Sub
 
     Private Sub BtnLogout_Click(sender As Object, e As EventArgs)

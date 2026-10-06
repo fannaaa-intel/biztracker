@@ -18,7 +18,7 @@ Friend Module Program
             Using login As New LoginForm()
                 If login.ShowDialog() <> DialogResult.OK Then Exit Do
             End Using
-            Using main As New MainForm()
+            Using main As New MainForm(openedAfterLogin:=True)
                 main.ShowDialog()
                 If Not main.LoggedOut Then Exit Do
             End Using

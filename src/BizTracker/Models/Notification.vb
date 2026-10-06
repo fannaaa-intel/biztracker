@@ -9,4 +9,7 @@ Public Class Notification
     Public Property DueDate As Date
     Public Property IsRead As Boolean
     Public Property CreatedAt As Date
+
+    ' Display only (filled from a JOIN, not saved)
+    Public Property BusinessName As String = ""
 End Class

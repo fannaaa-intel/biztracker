@@ -389,8 +389,8 @@ Public Module UiHelper
     ''' </summary>
     Public Function Confirm(message As String, Optional title As String = "Please confirm",
                             Optional yesText As String = "Yes", Optional noText As String = "No",
-                            Optional danger As Boolean = False) As Boolean
-        Return ModernMessageBox.Ask(message, title, yesText, noText, danger)
+                            Optional danger As Boolean = False, Optional warning As Boolean = False) As Boolean
+        Return ModernMessageBox.Ask(message, title, yesText, noText, danger, warning)
     End Function
 
     ' ==================== Drawing utilities ====================

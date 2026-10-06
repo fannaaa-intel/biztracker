@@ -108,10 +108,12 @@ Public Class ModernMessageBox
         End Using
     End Sub
 
-    ''' <summary>Yes/No style question. Returns True if the main button was clicked.</summary>
+    ''' <summary>Yes/No style question. Returns True if the main button was clicked.
+    ''' warning = True shows the amber warning icon with a normal (blue) main button.</summary>
     Public Shared Function Ask(message As String, title As String, Optional yesText As String = "Yes",
-                               Optional noText As String = "No", Optional danger As Boolean = False) As Boolean
-        Using box As New ModernMessageBox(message, title, If(danger, MessageKind.Warning, MessageKind.Question),
+                               Optional noText As String = "No", Optional danger As Boolean = False,
+                               Optional warning As Boolean = False) As Boolean
+        Using box As New ModernMessageBox(message, title, If(danger OrElse warning, MessageKind.Warning, MessageKind.Question),
                                           yesText, noText, danger)
             Return box.ShowCentered() = DialogResult.OK
         End Using
