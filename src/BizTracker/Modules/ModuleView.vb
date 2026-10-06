@@ -21,6 +21,32 @@ Public Class ModuleView
         End Get
     End Property
 
+    ' ==================== Navigation ====================
+
+    ''' <summary>
+    ''' Raised when the page wants MainForm to open another screen (e.g. the dashboard's "Open" buttons).
+    ''' businessId (optional) = the business the target screen should select first.
+    ''' </summary>
+    Public Event NavigateRequested(screen As AppScreen, businessId As Integer?)
+
+    Protected Sub RequestNavigate(screen As AppScreen, Optional businessId As Integer? = Nothing)
+        RaiseEvent NavigateRequested(screen, businessId)
+    End Sub
+
+    ''' <summary>Business the next opened screen should select first (set by MainForm when navigating).</summary>
+    Private Shared pendingBusinessId As Integer?
+
+    Public Shared Sub SetPendingBusiness(businessId As Integer?)
+        pendingBusinessId = businessId
+    End Sub
+
+    ''' <summary>Returns the business requested by the last navigation (only once), or Nothing.</summary>
+    Public Shared Function TakePendingBusiness() As Integer?
+        Dim id = pendingBusinessId
+        pendingBusinessId = Nothing
+        Return id
+    End Function
+
     ''' <summary>Reloads the page's data from the database (F5).</summary>
     Public Overridable Sub RefreshData()
     End Sub

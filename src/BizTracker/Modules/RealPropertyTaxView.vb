@@ -212,13 +212,20 @@ Public Class RealPropertyTaxView
         Return card
     End Function
 
+    ''' <summary>Width the longest location needs (locations are never cut: the column hides instead).</summary>
+    Private locationNeed As Integer = 120
+
     ''' <summary>Hides the less important columns when the grid is narrow (PIN and the quarter chips always stay).</summary>
     Private Sub FitGridColumns()
         Dim s = DeviceDpi / 96.0
         grid.Columns("PropertyType").Visible = grid.Width >= 410 * s
         grid.Columns("AssessedValue").Visible = grid.Width >= 530 * s
         grid.Columns("TdNo").Visible = grid.Width >= 660 * s
-        grid.Columns("Location").Visible = grid.Width >= 800 * s
+        Dim others = grid.Columns.Cast(Of DataGridViewColumn)().
+                     Where(Function(c) c.Visible AndAlso c.Name <> "Location").Sum(Function(c) c.MinimumWidth)
+        Dim location = grid.Columns("Location")
+        location.Visible = grid.Width >= 800 * s AndAlso grid.Width - others - 4 >= locationNeed
+        If location.Visible Then location.MinimumWidth = locationNeed
     End Sub
 
     Private Function RowData(rowIndex As Integer) As LedgerGridRow
@@ -402,6 +409,7 @@ Public Class RealPropertyTaxView
                 .IsOverdue = r.WorstStatus = StatusService.Overdue
             }).ToList()
 
+        locationNeed = Math.Max(Dpi(120), rows.Select(Function(r) TextRenderer.MeasureText(r.Location, Theme.BodyFont).Width + 16).DefaultIfEmpty(0).Max())
         loading = True
         grid.DataSource = rows
         ' Rows with an overdue quarter get a light red background

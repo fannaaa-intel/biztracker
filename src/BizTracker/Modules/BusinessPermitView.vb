@@ -361,6 +361,8 @@ Public Class BusinessPermitView
         Dim list = BusinessRepository.GetAll()
         cboBusiness.Items.Clear()
         cboBusiness.Items.AddRange(list.Cast(Of Object)().ToArray())
+        Dim requested = ModuleView.TakePendingBusiness()     ' e.g. opened from the dashboard
+        If requested.HasValue Then lastBusinessId = requested.Value
         Dim index = list.FindIndex(Function(b) b.BusinessId = lastBusinessId)
         loading = False
         If list.Count > 0 Then

@@ -153,6 +153,8 @@ Public Class ModuleToolbar
         cboBusiness.Items.AddRange(list.Cast(Of Object)().ToArray())
         Dim lastId As Integer = 0
         lastBusiness.TryGetValue(rememberKey, lastId)
+        Dim requested = ModuleView.TakePendingBusiness()     ' e.g. opened from the dashboard
+        If requested.HasValue Then lastId = requested.Value
         Dim index = list.FindIndex(Function(b) b.BusinessId = lastId)
         loading = False
         If list.Count > 0 Then

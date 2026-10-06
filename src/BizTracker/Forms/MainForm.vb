@@ -289,12 +289,14 @@ Public Class MainForm
         Dim oldView = currentView
         currentView = item.Create()
         currentView.Dock = DockStyle.Fill
+        AddHandler currentView.NavigateRequested, AddressOf View_NavigateRequested
         contentPanel.Controls.Add(currentView)
         If oldView IsNot Nothing Then
             contentPanel.Controls.Remove(oldView)
             oldView.Dispose()
         End If
         contentPanel.ResumeLayout()
+        ModuleView.SetPendingBusiness(Nothing)     ' the new page has used it (or did not need it)
 
         lblTitle.Text = item.Title
         lblSubtitle.Text = If(currentView.Subtitle <> "", currentView.Subtitle,
@@ -304,6 +306,18 @@ Public Class MainForm
         Next
         RefreshNotificationCount()
         Cursor = Cursors.Default
+    End Sub
+
+    ''' <summary>
+    ''' A page asked to open another screen (e.g. a dashboard card), optionally on a given business.
+    ''' Deferred, because opening a screen disposes the page whose button was clicked.
+    ''' </summary>
+    Private Sub View_NavigateRequested(screen As AppScreen, businessId As Integer?)
+        If Not AccessService.CanAccess(screen) Then Return
+        BeginInvoke(Sub()
+                        ModuleView.SetPendingBusiness(businessId)
+                        ShowScreen(screen)
+                    End Sub)
     End Sub
 
     ''' <summary>Unread alerts: the owner's business only, or all businesses for staff.</summary>
