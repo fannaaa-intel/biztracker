@@ -31,16 +31,6 @@ Public Class RealPropertyTaxView
     End Sub
 End Class
 
-Public Class HealthCertificateView
-    Inherits ModuleView
-    Public Sub New()
-        ShowPlaceholder(Icons.Health, "Health Certificates",
-                        "Employee health certificates with live Valid / Expiring Soon / Expired " &
-                        "status, compliance rate and one-click renewals.",
-                        "Coming in Phase 6")
-    End Sub
-End Class
-
 Public Class AnnualInspectionView
     Inherits ModuleView
     Public Sub New()

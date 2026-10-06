@@ -53,6 +53,34 @@ Public NotInheritable Class HealthCertificateRepository
             Db.P("@by", Db.NullIfEmpty(c.IssuedBy)))
     End Function
 
+    ''' <summary>
+    ''' Inserts several certificates as ONE transaction (all or nothing) and fills in each CertId.
+    ''' Used by "Renew Selected".
+    ''' </summary>
+    Public Shared Function InsertMany(certs As List(Of HealthCertificate)) As Boolean
+        Const sql As String =
+            "INSERT INTO health_certificates (employee_id, certificate_no, issue_date, expiry_date, issued_by) " &
+            "VALUES (@eid, @no, @issue, @expiry, @by)"
+        Dim newIds As New List(Of Integer)
+        Dim ok = Db.RunInTransaction(
+            Sub(conn, tx)
+                For Each c In certs
+                    newIds.Add(Db.TxExecute(conn, tx, sql,
+                        Db.P("@eid", c.EmployeeId),
+                        Db.P("@no", c.CertificateNo),
+                        Db.P("@issue", c.IssueDate.Date),
+                        Db.P("@expiry", c.ExpiryDate.Date),
+                        Db.P("@by", Db.NullIfEmpty(c.IssuedBy))))
+                Next
+            End Sub)
+        If ok Then
+            For i = 0 To certs.Count - 1
+                certs(i).CertId = newIds(i)
+            Next
+        End If
+        Return ok
+    End Function
+
     Public Shared Function Update(c As HealthCertificate) As Boolean
         Const sql As String =
             "UPDATE health_certificates SET issue_date = @issue, expiry_date = @expiry, issued_by = @by " &

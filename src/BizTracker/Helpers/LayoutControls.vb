@@ -322,6 +322,64 @@ Public Class WheelScrollPanel
 End Class
 
 ''' <summary>
+''' Validity meter: a caption on the left, a colored note on the right, and a rounded bar
+''' underneath showing how much of a validity period is left (e.g. "245 of 365 days left").
+''' The bar color follows the status (green / amber / red).
+''' </summary>
+Public Class ValidityBar
+    Inherits Control
+
+    Private _fraction As Double
+    Private _status As String = ""
+    Private _note As String = ""
+
+    Public Sub New()
+        SetStyle(ControlStyles.UserPaint Or ControlStyles.AllPaintingInWmPaint Or
+                 ControlStyles.OptimizedDoubleBuffer Or ControlStyles.ResizeRedraw, True)
+        Height = 42
+        Font = Theme.SmallFont
+    End Sub
+
+    ''' <summary>Sets the bar. fraction = part still valid (0..1); status picks the color; note is shown on the right.</summary>
+    Public Sub SetValue(caption As String, fraction As Double, status As String, note As String)
+        Text = caption
+        _fraction = Math.Max(0, Math.Min(1, fraction))
+        _status = If(status, "")
+        _note = If(note, "")
+        Invalidate()
+    End Sub
+
+    Protected Overrides Sub OnPaint(e As PaintEventArgs)
+        Dim g = e.Graphics
+        g.Clear(UiHelper.EffectiveBackColor(Parent))
+        Dim s = DeviceDpi / 96.0F
+        Dim textH = CInt(20 * s)
+        Dim noteW = Math.Min(Width \ 2, TextRenderer.MeasureText(_note, Theme.SmallBoldFont).Width + 4)
+        TextRenderer.DrawText(g, Text, Font, New Rectangle(0, 0, Width - noteW - CInt(8 * s), textH), Theme.TextMuted,
+                              TextFormatFlags.Left Or TextFormatFlags.VerticalCenter Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix)
+        TextRenderer.DrawText(g, _note, Theme.SmallBoldFont, New Rectangle(Width - noteW, 0, noteW, textH), Theme.StatusColor(_status),
+                              TextFormatFlags.Right Or TextFormatFlags.VerticalCenter Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix)
+
+        Dim barH = CInt(8 * s)
+        Dim track As New Rectangle(0, textH + CInt(6 * s), Width - 1, barH)
+        g.SmoothingMode = SmoothingMode.AntiAlias
+        Using path = UiHelper.RoundedRect(track, barH \ 2), brush As New SolidBrush(Theme.SoftBackground), pen As New Pen(Theme.Divider)
+            g.FillPath(brush, path)
+            g.DrawPath(pen, path)
+        End Using
+        Dim fillW = CInt(track.Width * _fraction)
+        If fillW >= barH Then
+            Using path = UiHelper.RoundedRect(New Rectangle(track.X, track.Y, fillW, barH), barH \ 2),
+                  brush As New SolidBrush(Theme.StatusColor(_status))
+                g.FillPath(brush, path)
+            End Using
+        End If
+        g.SmoothingMode = SmoothingMode.None
+    End Sub
+
+End Class
+
+''' <summary>
 ''' Summary card: icon circle, small caption, big value, and an optional status badge + note.
 ''' </summary>
 Public Class StatCard
@@ -384,7 +442,15 @@ Public Class StatCard
 
     Private Sub LayoutParts()
         If lblValue Is Nothing Then Return
-        Dim right = ClientSize.Width - CInt(12 * DeviceDpi / 96.0)
+        Dim s = DeviceDpi / 96.0
+        ' Narrow card (e.g. 5 cards in a row on a small window): hide the icon so the text keeps its room
+        Dim compact = ClientSize.Width < CInt(190 * s)
+        icon.Visible = Not compact
+        Dim textLeft = If(compact, icon.Left, icon.Right + CInt(12 * s))
+        lblCaption.Left = textLeft
+        lblValue.Left = textLeft
+        badge.Left = textLeft
+        Dim right = ClientSize.Width - CInt(12 * s)
         lblCaption.Width = Math.Max(10, right - lblCaption.Left)
         lblValue.Width = Math.Max(10, right - lblValue.Left)
         Dim noteLeft = If(badge.Visible, badge.Right + CInt(8 * DeviceDpi / 96.0), lblValue.Left)
