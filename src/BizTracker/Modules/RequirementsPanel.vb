@@ -29,7 +29,7 @@ Public Class RequirementsPanel
         Font = Theme.BodyFont
 
         lblSummary.Dock = DockStyle.Top
-        lblSummary.Height = 26
+        lblSummary.Height = Dpi(26)
         lblSummary.Font = Theme.SmallFont
         lblSummary.ForeColor = Theme.TextMuted
         lblSummary.TextAlign = ContentAlignment.MiddleLeft
@@ -85,7 +85,7 @@ Public Class RequirementsPanel
 
     ''' <summary>One checklist row: name + detail on the left, status badge and actions on the right.</summary>
     Private Function CreateRow(r As Requirement) As Control
-        Dim row As New Panel With {.Height = 50, .BackColor = Color.White}
+        Dim row As New Panel With {.Height = Dpi(52), .BackColor = Color.White}
         AddHandler row.Paint,
             Sub(s, e)
                 Using pen As New Pen(Theme.Divider)
@@ -96,28 +96,30 @@ Public Class RequirementsPanel
         ' Right side: actions + badge (laid out right-to-left)
         Dim right As New FlowLayoutPanel With {
             .Dock = DockStyle.Right, .AutoSize = True, .WrapContents = False,
-            .FlowDirection = FlowDirection.RightToLeft, .BackColor = Color.White, .Padding = New Padding(0, 12, 0, 0)
+            .FlowDirection = FlowDirection.RightToLeft, .BackColor = Color.White, .Padding = New Padding(0, Dpi(12), 0, 0)
         }
         If canVerify AndAlso r.Status = "Submitted" Then
             right.Controls.Add(MakeLink("Reject", Sub() RejectDoc(r)))
             right.Controls.Add(MakeLink("Verify", Sub() VerifyDoc(r)))
         End If
-        If canUpload AndAlso r.Status <> "Verified" Then
+        ' A reviewer deciding a submitted file gets Verify / Reject instead of Replace (keeps the row readable)
+        Dim reviewing = canVerify AndAlso r.Status = "Submitted"
+        If canUpload AndAlso r.Status <> "Verified" AndAlso Not reviewing Then
             right.Controls.Add(MakeLink(If(String.IsNullOrEmpty(r.FilePath), "Upload", "Replace"), Sub() UploadDoc(r)))
         End If
         If Not String.IsNullOrEmpty(r.FilePath) Then
             right.Controls.Add(MakeLink("View", Sub() ViewDoc(r)))
         End If
-        right.Controls.Add(New StatusBadge With {.Text = r.Status, .Height = 24, .Margin = New Padding(8, 1, 4, 0)})
+        right.Controls.Add(New StatusBadge With {.Text = r.Status, .Height = Dpi(24), .Margin = New Padding(Dpi(8), Dpi(1), Dpi(4), 0)})
 
         ' Left side: document name + one line of detail
         Dim left As New Panel With {.Dock = DockStyle.Fill, .BackColor = Color.White}
         Dim lblName As New Label With {
             .Text = r.DocumentName, .Font = Theme.BodyBoldFont, .ForeColor = Theme.TextDark,
-            .Dock = DockStyle.Top, .Height = 24, .AutoEllipsis = True, .TextAlign = ContentAlignment.BottomLeft
+            .Dock = DockStyle.Top, .Height = Dpi(26), .AutoEllipsis = True, .TextAlign = ContentAlignment.BottomLeft
         }
         Dim lblDetail As New Label With {
-            .Text = DetailText(r), .Font = Theme.SmallFont, .AutoEllipsis = True, .Dock = DockStyle.Top, .Height = 20,
+            .Text = DetailText(r), .Font = Theme.SmallFont, .AutoEllipsis = True, .Dock = DockStyle.Top, .Height = Dpi(20),
             .ForeColor = If(r.Status = "Rejected", Theme.StatusRed, Theme.TextMuted)
         }
         tips.SetToolTip(lblName, r.DocumentName)
@@ -147,7 +149,7 @@ Public Class RequirementsPanel
         Dim link As New LinkLabel With {
             .Text = text, .AutoSize = True, .Font = Theme.SmallBoldFont, .LinkColor = Theme.SidebarBlue,
             .ActiveLinkColor = Theme.SidebarActive, .LinkBehavior = LinkBehavior.HoverUnderline,
-            .Margin = New Padding(10, 4, 0, 0), .BackColor = Color.White
+            .Margin = New Padding(Dpi(10), Dpi(4), 0, 0), .BackColor = Color.White
         }
         If text = "Reject" Then link.LinkColor = Theme.StatusRed
         AddHandler link.LinkClicked, Sub() action()

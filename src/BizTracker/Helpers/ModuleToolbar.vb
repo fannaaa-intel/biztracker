@@ -98,6 +98,14 @@ Public Class ModuleToolbar
         Return btn
     End Function
 
+    ''' <summary>Changes a button's labels (e.g. "Put On Hold" / "Resume"), keeping the narrow-window behavior.</summary>
+    Public Sub SetActionText(btn As Button, fullText As String, shortText As String)
+        Dim current As String() = Nothing
+        If buttonTexts.TryGetValue(btn, current) AndAlso current(0) = fullText AndAlso current(1) = shortText Then Return
+        buttonTexts(btn) = {fullText, shortText}
+        FitToolbar()
+    End Sub
+
     ''' <summary>Changes a button's tooltip (e.g. to explain why it is disabled).</summary>
     Public Sub SetTip(btn As Button, text As String)
         tips.SetToolTip(btn, text)

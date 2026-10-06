@@ -29,6 +29,26 @@ Public Module UiHelper
         Return CInt(Math.Round(value * DpiScale))
     End Function
 
+    ' ==================== Labels ====================
+
+    ''' <summary>
+    ''' Labels normally treat "&amp;" as a keyboard-shortcut marker and hide it ("Renovation &amp; Extension"
+    ''' would show "Renovation  Extension"). This turns that off for every label under root, including
+    ''' labels added later (detail rows, dialogs fields...).
+    ''' </summary>
+    Public Sub DisableMnemonics(root As Control)
+        If TypeOf root Is Label Then DirectCast(root, Label).UseMnemonic = False
+        RemoveHandler root.ControlAdded, AddressOf Mnemonic_ControlAdded
+        AddHandler root.ControlAdded, AddressOf Mnemonic_ControlAdded
+        For Each child As Control In root.Controls
+            DisableMnemonics(child)
+        Next
+    End Sub
+
+    Private Sub Mnemonic_ControlAdded(sender As Object, e As ControlEventArgs)
+        DisableMnemonics(e.Control)
+    End Sub
+
     ' ==================== Buttons ====================
 
     ''' <summary>Solid blue button for the main action on a screen.</summary>

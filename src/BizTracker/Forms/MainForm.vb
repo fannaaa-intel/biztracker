@@ -80,6 +80,7 @@ Public Class MainForm
         Controls.Add(contentPanel)   ' fills what is left
         Controls.Add(topBar)         ' top, right of the sidebar
         Controls.Add(sidebar)        ' full height on the left
+        UiHelper.DisableMnemonics(Me)     ' show "&" in data as-is
         ResumeLayout(False)
     End Sub
 

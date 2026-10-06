@@ -59,6 +59,7 @@ Public Class ModernDialog
         Controls.Add(Body)
         Controls.Add(Footer)
         Controls.Add(Header)
+        UiHelper.DisableMnemonics(Me)     ' show "&" in data as-is
     End Sub
 
     Protected Sub SetTitle(title As String, subtitle As String)

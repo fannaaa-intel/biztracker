@@ -11,6 +11,7 @@ Public Class ModuleView
         BackColor = Theme.ContentBackground
         Font = Theme.BodyFont
         DoubleBuffered = True
+        UiHelper.DisableMnemonics(Me)     ' show "&" in data as-is
     End Sub
 
     ''' <summary>Optional text shown under the page title in the top bar.</summary>

@@ -11,16 +11,6 @@ Public Class DashboardView
     End Sub
 End Class
 
-Public Class ConstructionPermitView
-    Inherits ModuleView
-    Public Sub New()
-        ShowPlaceholder(Icons.Repair, "Construction Permit",
-                        "Project pipeline from Locational/Zoning to Building Permit, Construction " &
-                        "and Occupancy, with clearances and technical documents.",
-                        "Coming in Phase 10")
-    End Sub
-End Class
-
 Public Class SettingsView
     Inherits ModuleView
     Public Sub New()

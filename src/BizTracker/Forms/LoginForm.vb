@@ -42,6 +42,7 @@ Public Class LoginForm
 
         AcceptButton = btnLogin    ' Enter key signs in
         AddHandler lockTimer.Tick, AddressOf LockTimer_Tick
+        UiHelper.DisableMnemonics(Me)     ' show "&" in data as-is
         ResumeLayout(False)
     End Sub
 

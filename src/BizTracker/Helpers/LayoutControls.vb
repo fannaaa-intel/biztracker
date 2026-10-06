@@ -20,6 +20,9 @@ Public Class StepTracker
         Font = Theme.SmallFont
     End Sub
 
+    Private Shared ReadOnly CompactFont As New Font(Theme.FontFamilyName, 7.5F, FontStyle.Regular)
+    Private Shared ReadOnly CompactBoldFont As New Font(Theme.FontFamilyName, 7.5F, FontStyle.Bold)
+
     Public Property Steps As String()
         Get
             Return _steps
@@ -96,7 +99,12 @@ Public Class StepTracker
 
             Dim top = d + CInt(8 * s)
             Dim labelRect As New Rectangle(CInt(colW * i + 2), top, CInt(colW - 4), Height - top)
-            TextRenderer.DrawText(g, _steps(i), If(active, Theme.SmallBoldFont, Font), labelRect,
+            Dim labelFont = If(active, Theme.SmallBoldFont, Font)
+            ' A single long word cannot wrap: use a slightly smaller font instead of cutting it
+            If TextRenderer.MeasureText(_steps(i), labelFont).Width > labelRect.Width AndAlso Not _steps(i).Contains(" ") Then
+                labelFont = If(active, CompactBoldFont, CompactFont)
+            End If
+            TextRenderer.DrawText(g, _steps(i), labelFont, labelRect,
                                   If(done OrElse active, Theme.TextDark, Theme.TextMuted),
                                   TextFormatFlags.HorizontalCenter Or TextFormatFlags.Top Or TextFormatFlags.WordBreak Or
                                   TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix)
