@@ -11,16 +11,6 @@ Public Class DashboardView
     End Sub
 End Class
 
-Public Class AnnualInspectionView
-    Inherits ModuleView
-    Public Sub New()
-        ShowPlaceholder(Icons.Search, "Annual Inspections",
-                        "Joint inspection schedule and the Structural, Electrical, Mechanical and " &
-                        "Fire checklist, with re-inspection and certificate issuance.",
-                        "Coming in Phase 9")
-    End Sub
-End Class
-
 Public Class ConstructionPermitView
     Inherits ModuleView
     Public Sub New()
