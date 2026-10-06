@@ -15,6 +15,42 @@ Public Class StartupForm
         btnTestConnection.Font = Theme.BodyBoldFont
         btnTestConnection.BackColor = Theme.ButtonPrimary
         btnTestConnection.ForeColor = Theme.ButtonPrimaryText
+        btnTestStatus.Font = Theme.BodyBoldFont
+        btnTestStatus.BackColor = Theme.ButtonPrimary
+        btnTestStatus.ForeColor = Theme.ButtonPrimaryText
+    End Sub
+
+    ''' <summary>
+    ''' TEMPORARY (Phase 3 check): health certificate statuses per business, computed by
+    ''' StatusService from the repositories. Expected for the bakeshop: 1 Expiring Soon.
+    ''' </summary>
+    Private Sub btnTestStatus_Click(sender As Object, e As EventArgs) Handles btnTestStatus.Click
+        Cursor = Cursors.WaitCursor
+        Dim report As New System.Text.StringBuilder()
+        Dim totalExpiringSoon = 0
+
+        For Each biz In BusinessRepository.GetAll()
+            Dim employees = EmployeeRepository.GetByBusinessId(biz.BusinessId)
+            Dim certificates = HealthCertificateRepository.GetLatestByBusinessId(biz.BusinessId)
+            ' Each active employee's current expiry date (Nothing if no certificate yet)
+            Dim expiryDates = employees.Select(
+                Function(emp) certificates.FirstOrDefault(Function(c) c.EmployeeId = emp.EmployeeId)?.ExpiryDate)
+            Dim counts = StatusService.CountByExpiryStatus(expiryDates)
+            totalExpiringSoon += counts(StatusService.ExpiringSoon)
+
+            report.AppendLine(biz.BusinessName & " (" & employees.Count & " employees)")
+            report.AppendLine("   Valid: " & counts(StatusService.Valid) &
+                              "   Expiring Soon: " & counts(StatusService.ExpiringSoon) &
+                              "   Expired: " & counts(StatusService.Expired) &
+                              "   No Record: " & counts(StatusService.NoRecord))
+        Next
+        Cursor = Cursors.Default
+
+        report.AppendLine()
+        report.AppendLine("Employees with 'Expiring Soon' (all businesses): " & totalExpiringSoon)
+        report.AppendLine("Warning window: " & StatusService.WarningDays & " days (from settings)")
+        report.AppendLine("Next business permit no.: " & ReferenceNoService.GetNext(ReferenceNoService.BusinessPermit))
+        MessageBox.Show(report.ToString(), "Test Status", MessageBoxButtons.OK, MessageBoxIcon.Information)
     End Sub
 
     Private Sub btnTestConnection_Click(sender As Object, e As EventArgs) Handles btnTestConnection.Click

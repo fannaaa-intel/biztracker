@@ -25,7 +25,18 @@ Partial Class StartupForm
         lblTitle = New Label()
         btnTestConnection = New Button()
         lblStatus = New Label()
+        btnTestStatus = New Button()
         SuspendLayout()
+        '
+        'btnTestStatus
+        '
+        btnTestStatus.FlatStyle = FlatStyle.Flat
+        btnTestStatus.Location = New Point(230, 90)
+        btnTestStatus.Name = "btnTestStatus"
+        btnTestStatus.Size = New Size(180, 40)
+        btnTestStatus.TabIndex = 3
+        btnTestStatus.Text = "Test Status"
+        btnTestStatus.UseVisualStyleBackColor = False
         '
         'lblTitle
         '
@@ -59,10 +70,11 @@ Partial Class StartupForm
         '
         AutoScaleDimensions = New SizeF(8.0F, 20.0F)
         AutoScaleMode = AutoScaleMode.Font
-        ClientSize = New Size(480, 220)
+        ClientSize = New Size(460, 200)
         Controls.Add(lblTitle)
         Controls.Add(btnTestConnection)
         Controls.Add(lblStatus)
+        Controls.Add(btnTestStatus)
         FormBorderStyle = FormBorderStyle.FixedSingle
         MaximizeBox = False
         Name = "StartupForm"
@@ -75,5 +87,6 @@ Partial Class StartupForm
     Friend WithEvents lblTitle As Label
     Friend WithEvents btnTestConnection As Button
     Friend WithEvents lblStatus As Label
+    Friend WithEvents btnTestStatus As Button
 
 End Class

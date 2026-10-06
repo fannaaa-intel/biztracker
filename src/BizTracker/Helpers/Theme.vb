@@ -49,7 +49,7 @@ Public NotInheritable Class Theme
             Case "valid", "approved", "paid", "issued", "endorsed", "passed", "verified", "completed"
                 Return StatusGreen
             Case "pending", "expiring soon", "submitted", "under review", "for assessment",
-                 "assessed", "scheduled", "in progress", "pending upload"
+                 "assessed", "scheduled", "in progress", "pending upload", "due soon"
                 Return StatusAmber
             Case "expired", "overdue", "rejected", "failed", "for re-inspection"
                 Return StatusRed

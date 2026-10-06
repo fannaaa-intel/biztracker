@@ -106,6 +106,94 @@ Public NotInheritable Class Db
     End Function
 
     ' ------------------------------------------------------------------
+    ' ExecuteInsert - INSERT one row and return its new AUTO_INCREMENT id.
+    ' Returns -1 if a DB error occurred (0 if INSERT IGNORE skipped the row).
+    ' ------------------------------------------------------------------
+    Public Shared Function ExecuteInsert(sql As String, ParamArray parameters As MySqlParameter()) As Integer
+        Try
+            Using conn = GetConnection()
+                conn.Open()
+                Using cmd As New MySqlCommand(sql, conn)
+                    AddParameters(cmd, parameters)
+                    cmd.ExecuteNonQuery()
+                    Return CInt(cmd.LastInsertedId)
+                End Using
+            End Using
+        Catch ex As Exception
+            ShowError(ex)
+            Return -1
+        End Try
+    End Function
+
+    ' ------------------------------------------------------------------
+    ' RunInTransaction - runs several statements as ONE unit of work.
+    ' If anything fails, everything is rolled back and a friendly error is shown.
+    ' Inside "work", run statements with TxExecute(conn, tx, sql, params...).
+    ' Example: insert a permit, then insert its 5 endorsements.
+    ' ------------------------------------------------------------------
+    Public Shared Function RunInTransaction(work As Action(Of MySqlConnection, MySqlTransaction)) As Boolean
+        Try
+            Using conn = GetConnection()
+                conn.Open()
+                Using tx = conn.BeginTransaction()
+                    Try
+                        work(conn, tx)
+                        tx.Commit()
+                        Return True
+                    Catch
+                        tx.Rollback()
+                        Throw
+                    End Try
+                End Using
+            End Using
+        Catch ex As Exception
+            ShowError(ex)
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
+    ''' Runs one statement inside RunInTransaction. Returns LAST_INSERT_ID for INSERTs.
+    ''' Does NOT catch errors - the transaction catches them and rolls back.
+    ''' </summary>
+    Public Shared Function TxExecute(conn As MySqlConnection, tx As MySqlTransaction,
+                                     sql As String, ParamArray parameters As MySqlParameter()) As Integer
+        Using cmd As New MySqlCommand(sql, conn, tx)
+            AddParameters(cmd, parameters)
+            cmd.ExecuteNonQuery()
+            Return CInt(cmd.LastInsertedId)
+        End Using
+    End Function
+
+    ''' <summary>Runs a scalar query inside RunInTransaction (e.g. reading a status first).</summary>
+    Public Shared Function TxScalar(conn As MySqlConnection, tx As MySqlTransaction,
+                                    sql As String, ParamArray parameters As MySqlParameter()) As Object
+        Using cmd As New MySqlCommand(sql, conn, tx)
+            AddParameters(cmd, parameters)
+            Return cmd.ExecuteScalar()
+        End Using
+    End Function
+
+    ' ------------------------------------------------------------------
+    ' Parameter helpers
+    ' ------------------------------------------------------------------
+
+    ''' <summary>
+    ''' Short way to build a parameter: Db.P("@id", 5).
+    ''' (Typed as Object on purpose: New MySqlParameter("@x", 0) would treat 0 as a DB type.)
+    ''' Nothing and empty Nullable values are sent as SQL NULL.
+    ''' </summary>
+    Public Shared Function P(name As String, value As Object) As MySqlParameter
+        Return New MySqlParameter With {.ParameterName = name, .Value = If(value, DBNull.Value)}
+    End Function
+
+    ''' <summary>Turns "" or spaces into Nothing so optional text columns are stored as NULL.</summary>
+    Public Shared Function NullIfEmpty(text As String) As String
+        If String.IsNullOrWhiteSpace(text) Then Return Nothing
+        Return text.Trim()
+    End Function
+
+    ' ------------------------------------------------------------------
     ' TEMPORARY (setup check, removed in Phase 4): connects to biztracker_db
     ' and returns one row with: server_version, db_name, business_count,
     ' user_count, admin_hash. Returns Nothing if the query failed.
@@ -129,9 +217,9 @@ Public NotInheritable Class Db
     ''' <summary>Adds parameters to a command. Nothing values are sent as SQL NULL.</summary>
     Private Shared Sub AddParameters(cmd As MySqlCommand, parameters As MySqlParameter())
         If parameters Is Nothing Then Return
-        For Each p In parameters
-            If p.Value Is Nothing Then p.Value = DBNull.Value
-            cmd.Parameters.Add(p)
+        For Each param In parameters
+            If param.Value Is Nothing Then param.Value = DBNull.Value
+            cmd.Parameters.Add(param)
         Next
     End Sub
 
@@ -148,6 +236,9 @@ Public NotInheritable Class Db
 
     ''' <summary>Turns common MySQL error codes into plain-language messages.</summary>
     Private Shared Function FriendlyMessage(ex As Exception) As String
+        ' Business rule broken inside a transaction - the message is already user-friendly.
+        If TypeOf ex Is BusinessRuleException Then Return ex.Message
+
         Dim mysqlEx = TryCast(ex, MySqlException)
         If mysqlEx IsNot Nothing Then
             Select Case mysqlEx.Number
@@ -171,4 +262,17 @@ Public NotInheritable Class Db
         Return "An unexpected error occurred:" & vbCrLf & ex.Message
     End Function
 
+End Class
+
+''' <summary>
+''' Throw this inside Db.RunInTransaction when a business rule is broken
+''' (e.g. "Only Submitted applications can be deleted."). The transaction is
+''' rolled back and the message is shown to the user as-is.
+''' </summary>
+Public Class BusinessRuleException
+    Inherits Exception
+
+    Public Sub New(message As String)
+        MyBase.New(message)
+    End Sub
 End Class
