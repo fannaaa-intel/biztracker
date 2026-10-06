@@ -7,6 +7,7 @@ Public Enum AppScreen
     HealthCertificates
     AnnualInspections
     ConstructionPermits
+    PermitVault
     Settings
 End Enum
 
@@ -21,14 +22,14 @@ Public NotInheritable Class AccessService
 
     Private Shared ReadOnly AccessMap As New Dictionary(Of String, AppScreen()) From {
         {Roles.Admin, CType([Enum].GetValues(GetType(AppScreen)), AppScreen())},
-        {Roles.BPLO, {AppScreen.Dashboard, AppScreen.BusinessPermits}},
+        {Roles.BPLO, {AppScreen.Dashboard, AppScreen.BusinessPermits, AppScreen.PermitVault}},
         {Roles.Health, {AppScreen.SanitaryPermits, AppScreen.HealthCertificates}},
         {Roles.Assessor, {AppScreen.RealPropertyTax}},
         {Roles.Building, {AppScreen.ConstructionPermits}},
         {Roles.Inspector, {AppScreen.AnnualInspections}},
         {Roles.Owner, {AppScreen.Dashboard, AppScreen.BusinessPermits, AppScreen.SanitaryPermits,
                        AppScreen.RealPropertyTax, AppScreen.HealthCertificates,
-                       AppScreen.AnnualInspections, AppScreen.ConstructionPermits}}
+                       AppScreen.AnnualInspections, AppScreen.ConstructionPermits, AppScreen.PermitVault}}
     }
 
     Public Shared Function CanAccess(role As String, screen As AppScreen) As Boolean

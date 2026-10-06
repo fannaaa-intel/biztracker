@@ -3,7 +3,7 @@
 '''   - left: blue sidebar with the screens the user's role can open
 '''   - top:  page title, notification bell, signed-in user, logout
 '''   - fill: content panel that hosts one ModuleView at a time
-''' Shortcuts: Ctrl+1..8 switch pages, F5 refreshes the current page.
+''' Shortcuts: Ctrl+1..9 switch pages, F5 refreshes the current page.
 ''' </summary>
 Public Class MainForm
     Inherits Form
@@ -32,6 +32,8 @@ Public Class MainForm
                           .Section = "SERVICES", .Create = Function() New AnnualInspectionView()},
         New NavItem With {.Screen = AppScreen.ConstructionPermits, .Title = "Construction Permit", .Glyph = Icons.Repair,
                           .Section = "SERVICES", .Create = Function() New ConstructionPermitView()},
+        New NavItem With {.Screen = AppScreen.PermitVault, .Title = "Permit Vault", .Glyph = Icons.Lock,
+                          .Section = "RECORDS", .Create = Function() New PermitVaultView()},
         New NavItem With {.Screen = AppScreen.Settings, .Title = "Settings", .Glyph = Icons.Settings,
                           .Section = "ADMINISTRATION", .Create = Function() New SettingsView()}
     }
@@ -121,7 +123,7 @@ Public Class MainForm
         ' --- Footer (shortcut hints; hidden automatically when the window is too short) ---
         footer = New Label With {
             .Dock = DockStyle.Bottom, .Height = 56, .Font = Theme.SmallFont, .ForeColor = Theme.SidebarTextMuted,
-            .Text = "Ctrl+1–8 switch pages  ·  F5 refresh" & vbCrLf & "BizTracker v1.0",
+            .Text = "Ctrl+1–9 switch pages  ·  F5 refresh" & vbCrLf & "BizTracker v1.0",
             .TextAlign = ContentAlignment.MiddleLeft, .Padding = New Padding(22, 0, 0, 0),
             .BackColor = Theme.SidebarBlue
         }
@@ -196,7 +198,21 @@ Public Class MainForm
         If footer Is Nothing Then Return
         ' Space below the header = nav panel + footer (when shown)
         Dim available = navPanel.Height + If(footer.Visible, footer.Height, 0)
+        ' Many items on a short window (e.g. Admin at the minimum size): use slightly shorter rows
+        SetCompactNav(False)
+        If NavContentHeight() > available Then SetCompactNav(True)
         footer.Visible = available - footer.Height >= NavContentHeight()
+    End Sub
+
+    ''' <summary>Normal rows: buttons 42 / section titles 30. Compact rows: 36 / 24.</summary>
+    Private Sub SetCompactNav(compact As Boolean)
+        For Each c As Control In navPanel.Controls
+            If TypeOf c Is NavButton Then
+                c.Height = If(compact, 36, 42)
+            ElseIf TypeOf c Is Label Then
+                c.Height = If(compact, 24, 30)
+            End If
+        Next
     End Sub
 
     ' ==================== Top bar ====================
@@ -394,7 +410,7 @@ Public Class MainForm
         MyBase.OnFormClosing(e)
     End Sub
 
-    ''' <summary>Keyboard shortcuts: Ctrl+1..8 = n-th sidebar page, F5 = refresh.</summary>
+    ''' <summary>Keyboard shortcuts: Ctrl+1..9 = n-th sidebar page, F5 = refresh.</summary>
     Protected Overrides Function ProcessCmdKey(ByRef msg As Message, keyData As Keys) As Boolean
         If keyData = Keys.F5 Then
             currentView?.RefreshData()

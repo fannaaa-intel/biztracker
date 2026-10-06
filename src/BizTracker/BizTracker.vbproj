@@ -15,6 +15,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- HTML templates for printable documents (ReportService reads them next to the .exe) -->
+    <None Update="Templates\**\*.html" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
     <PackageReference Include="MySql.Data" Version="26.7.0" />
   </ItemGroup>

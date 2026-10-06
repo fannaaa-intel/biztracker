@@ -1,0 +1,14 @@
+{{header}}
+    <table class="info">
+      <tr><td class="k">Received from</td><td>{{business_name}} ({{owner_name}})</td></tr>
+      <tr><td class="k">Property (PIN · TD No.)</td><td>{{pin}} · {{td_no}}</td></tr>
+      <tr><td class="k">Location</td><td>{{location}}</td></tr>
+      <tr><td class="k">Period covered</td><td>{{period}}</td></tr>
+      <tr><td class="k">Date of payment</td><td>{{issue_date}} <span class="stamp">{{status}}</span></td></tr>
+    </table>
+    <table class="grid">
+      <tr><th>Nature of collection</th><th class="num">Amount</th></tr>
+{{rows}}
+    </table>
+    <div class="total">TOTAL PAID: {{total_paid}}</div>
+{{footer}}

@@ -64,15 +64,16 @@ BizTracker/
 | Role | Can access |
 |---|---|
 | Admin | Everything + User Management + Settings + Audit Log |
-| BPLO | Businesses, Business Permits, Dashboard, Reports |
+| BPLO | Businesses, Business Permits, Dashboard, Reports, Permit Vault |
 | Health | Sanitary Permits, Health Certificates |
 | Assessor | Real Property Tax |
 | Building | Construction Permits |
 | Inspector | Annual Inspections |
-| Owner | Read-only view of THEIR OWN business (all six modules + dashboard + vault), can upload requirements and file applications |
+| Owner | Read-only view of THEIR OWN business (all six modules + dashboard + Permit Vault), can upload requirements and file applications |
 
 Owner users have `users.business_id` set; every query for an Owner is filtered by that business_id.
 Sidebar items are hidden for modules a role cannot access.
+Permit Vault (issued documents + Verify Document) is its own sidebar item (decided by the user in Phase 13): Admin, BPLO, Owner.
 
 ## Database tables (actual schema)
 Source of truth: `database/biztracker_db.sql` (one file: CREATE DATABASE + all 18 tables + seed data).

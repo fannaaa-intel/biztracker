@@ -1,0 +1,16 @@
+{{header}}
+    <table class="info">
+      <tr><td class="k">Taxpayer / business</td><td>{{business_name}}</td></tr>
+      <tr><td class="k">Owner</td><td>{{owner_name}}</td></tr>
+      <tr><td class="k">Address</td><td>{{address}}</td></tr>
+      <tr><td class="k">Application</td><td>{{reference_no}} · {{application_type}} {{permit_year}}</td></tr>
+      <tr><td class="k">Declared gross receipts</td><td>{{gross_receipts}}</td></tr>
+    </table>
+    <table class="grid">
+      <tr><th>Particulars</th><th class="num">Amount</th></tr>
+{{rows}}
+    </table>
+    <div class="total">TOTAL AMOUNT DUE: {{total_due}}</div>
+    <p class="statement">Payment status: <b>{{payment_status}}</b>. Present this order of payment at the Office of the
+      Municipal Treasurer. An Official Receipt will be issued upon payment.</p>
+{{footer}}

@@ -1,0 +1,20 @@
+{{header}}
+    <p class="statement">This permit is granted to <b>{{business_name}}</b>, owned and operated by <b>{{owner_name}}</b>,
+      to engage in <b>{{line_of_business}}</b> at {{address}} for the year <b>{{permit_year}}</b>, subject to the provisions
+      of the Local Government Code (RA 7160), the Ease of Doing Business Act (RA 11032) and existing municipal ordinances.</p>
+    <table class="info">
+      <tr><td class="k">Business name</td><td>{{business_name}}</td></tr>
+      <tr><td class="k">Owner / proprietor</td><td>{{owner_name}}</td></tr>
+      <tr><td class="k">Business address</td><td>{{address}}</td></tr>
+      <tr><td class="k">Type of organization</td><td>{{business_type}}</td></tr>
+      <tr><td class="k">DTI / SEC registration · TIN</td><td>{{dti_sec_no}} · {{tin}}</td></tr>
+      <tr><td class="k">Application</td><td>{{application_type}} · {{application_ref}}</td></tr>
+      <tr><td class="k">Taxes and fees paid</td><td>{{amount_paid}}</td></tr>
+      <tr><td class="k">Valid until</td><td><b>{{valid_until}}</b> <span class="stamp">{{status}}</span></td></tr>
+    </table>
+    <table class="grid">
+      <tr><th>Clearance / endorsement</th><th>Status</th><th>Date</th></tr>
+{{rows}}
+    </table>
+    <p class="statement">This permit must be displayed conspicuously at the place of business and renewed on or before January 20 of the following year.</p>
+{{footer}}
