@@ -106,24 +106,20 @@ Public NotInheritable Class Db
     End Function
 
     ' ------------------------------------------------------------------
-    ' TEMPORARY (Phase 1): connects to the MySQL SERVER only, without
-    ' selecting biztracker_db, and returns the server version.
-    ' Returns Nothing if the server cannot be reached.
+    ' TEMPORARY (setup check, removed in Phase 4): connects to biztracker_db
+    ' and returns one row with: server_version, db_name, business_count,
+    ' user_count, admin_hash. Returns Nothing if the query failed.
     ' ------------------------------------------------------------------
-    Public Shared Function GetServerVersion() As String
-        Try
-            Dim builder As New MySqlConnectionStringBuilder(ConnectionString)
-            builder.Database = ""   ' server only - the database may not exist yet
-            Using conn As New MySqlConnection(builder.ConnectionString)
-                conn.Open()
-                Using cmd As New MySqlCommand("SELECT VERSION()", conn)
-                    Return Convert.ToString(cmd.ExecuteScalar())
-                End Using
-            End Using
-        Catch ex As Exception
-            ShowError(ex)
-            Return Nothing
-        End Try
+    Public Shared Function GetSetupCheck() As DataRow
+        Const sql As String =
+            "SELECT VERSION() AS server_version, " &
+            "       DATABASE() AS db_name, " &
+            "       (SELECT COUNT(*) FROM businesses) AS business_count, " &
+            "       (SELECT COUNT(*) FROM users) AS user_count, " &
+            "       (SELECT password_hash FROM users WHERE username = @username) AS admin_hash"
+        Dim table = GetDataTable(sql, New MySqlParameter("@username", "admin"))
+        If table.Rows.Count = 0 Then Return Nothing
+        Return table.Rows(0)
     End Function
 
     ' ==================================================================

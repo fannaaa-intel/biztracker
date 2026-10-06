@@ -30,8 +30,8 @@ BizTracker/
 ├─ WORK_ORDER.md
 ├─ README.md
 ├─ database/
-│  ├─ biztracker_schema.sql      # CREATE DATABASE + all tables
-│  └─ biztracker_seed.sql        # sample data (one consistent story)
+│  ├─ biztracker_db.sql          # CREATE DATABASE + all tables + seed data (source of truth)
+│  └─ README.md                  # how to import/reset, table list, seeded logins
 ├─ src/BizTracker/
 │  ├─ BizTracker.vbproj
 │  ├─ App.config                 # connection string lives here only
@@ -74,26 +74,74 @@ BizTracker/
 Owner users have `users.business_id` set; every query for an Owner is filtered by that business_id.
 Sidebar items are hidden for modules a role cannot access.
 
-## Database tables (target design)
-- `users` (user_id, username, password_hash, full_name, role, business_id NULL, is_active, created_at)
-- `businesses` (business_id, business_name, owner_name, address, barangay, business_type, line_of_business, dti_sec_no, tin, contact_no, email, is_active, created_at)
-- `business_permits` (permit_id, business_id, reference_no, application_type New/Renewal, permit_year, status, assessed_amount, date_filed, date_issued, valid_until, remarks)
+## Database tables (actual schema)
+Source of truth: `database/biztracker_db.sql` (one file: CREATE DATABASE + all 18 tables + seed data).
+If this section and the SQL file ever disagree, the SQL file wins. All tables are InnoDB, utf8mb4.
+All foreign keys are `ON DELETE RESTRICT ON UPDATE CASCADE`. `NULL` = nullable; everything else is NOT NULL.
+Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FKs to `users.user_id`.
+
+- `businesses` (business_id PK, business_name, owner_name, address, barangay,
+  business_type ENUM('Sole Proprietorship','Partnership','Corporation','Cooperative') default 'Sole Proprietorship',
+  line_of_business, is_food_business TINYINT(1) default 0, dti_sec_no NULL, tin NULL, contact_no NULL, email NULL,
+  is_active TINYINT(1) default 1, created_at)
+- `users` (user_id PK, username UNIQUE, password_hash (BCrypt), full_name,
+  role ENUM('Admin','BPLO','Health','Assessor','Building','Inspector','Owner'),
+  business_id NULL FK→businesses (Owner accounts only), is_active default 1, last_login DATETIME NULL, created_at)
+- `business_permits` (permit_id PK, business_id FK, reference_no UNIQUE, application_type ENUM('New','Renewal'),
+  permit_year YEAR, status ENUM('Submitted','Under Review','For Assessment','Assessed','Paid','Issued','Rejected') default 'Submitted',
+  gross_receipts DECIMAL(14,2) default 0, assessed_amount DECIMAL(12,2) default 0, surcharge DECIMAL(12,2) default 0,
+  interest DECIMAL(12,2) default 0, mayors_permit_no NULL UNIQUE, date_filed DATE, date_issued NULL, valid_until NULL,
+  remarks NULL, created_at)
   - status flow: Submitted → Under Review → For Assessment → Assessed → Paid → Issued (or Rejected)
-- `clearance_endorsements` (endorsement_id, permit_id, office Barangay/Sanitary/RPT/Fire/Zoning, status Pending/Endorsed/Rejected, endorsed_by, endorsed_at)
-- `requirements` (requirement_id, business_id, module, related_id, document_name, file_path, status Pending Upload/Submitted/Verified/Rejected, uploaded_at, verified_by)
-- `sanitary_permits` (sanitary_id, business_id, permit_no, category Food/Non-Food, status, inspection_date, inspection_score, inspector_name, findings, date_issued, valid_until)
-- `employees` (employee_id, business_id, full_name, position, category Food Handler/Non-Food, is_active)
-- `health_certificates` (cert_id, employee_id, certificate_no, issue_date, expiry_date)
-- `properties` (property_id, business_id, pin, td_no, location, property_type Land/Building, assessed_value)
-- `rpt_assessments` (assessment_id, property_id, tax_year, basic_tax, sef_tax, total_due)
-- `rpt_payments` (payment_id, assessment_id, quarter 1-4, amount_paid, penalty, or_no, payment_date)
-- `inspections` (inspection_id, business_id, reference_no, schedule_date, status Scheduled/In Progress/Completed/For Re-inspection, overall_result)
-- `inspection_items` (item_id, inspection_id, department Structural/Electrical/Mechanical/Fire, result Pending/Passed/Failed, findings, inspector_name, inspected_at)
-- `construction_projects` (project_id, business_id, reference_no, project_title, project_type, current_stage Locational/Building Permit/Construction/Occupancy/Completed, status, date_filed)
-- `construction_clearances` (clearance_id, project_id, clearance_type Locational/Building/Occupancy/FSEC, clearance_no, status, approved_by, approved_at)
-- `notifications` (notification_id, business_id, module, message, due_date, is_read, created_at)
-- `settings` (setting_key, setting_value)
-- `audit_log` (log_id, user_id, action, table_name, record_id, details, created_at)
+- `clearance_endorsements` (endorsement_id PK, permit_id FK→business_permits,
+  office ENUM('Barangay','Sanitary','RPT','Fire','Zoning'), status ENUM('Pending','Endorsed','Rejected') default 'Pending',
+  endorsed_by NULL FK→users, endorsed_at NULL, remarks NULL) — UNIQUE (permit_id, office)
+- `requirements` (requirement_id PK, business_id FK,
+  module ENUM('Business Permit','Sanitary Permit','Health Certificate','Real Property Tax','Annual Inspection','Construction Permit'),
+  related_id NULL (permit_id / sanitary_id / project_id ... depending on module), document_name, file_path NULL (relative path),
+  status ENUM('Pending Upload','Submitted','Verified','Rejected') default 'Pending Upload', uploaded_at NULL,
+  verified_by NULL FK→users, verified_at NULL, remarks NULL)
+- `sanitary_permits` (sanitary_id PK, business_id FK, permit_no UNIQUE, permit_year YEAR, category ENUM('Food','Non-Food'),
+  status ENUM('Submitted','Lab Analysis','For Inspection','Issued','Rejected') default 'Submitted', inspection_date NULL,
+  inspection_score TINYINT UNSIGNED NULL (0-100, CHECK), inspector_name NULL, findings TEXT NULL, date_filed DATE,
+  date_issued NULL, valid_until NULL (Dec 31 of issue year), created_at)
+- `employees` (employee_id PK, business_id FK, full_name, position, category ENUM('Food Handler','Non-Food'),
+  is_active default 1, created_at)
+- `health_certificates` (cert_id PK, employee_id FK, certificate_no UNIQUE, issue_date, expiry_date (CHECK expiry > issue),
+  issued_by VARCHAR NULL (a name, not an FK), created_at) — status Valid/Expiring Soon/Expired is computed, not stored
+- `properties` (property_id PK, business_id FK, pin UNIQUE, td_no UNIQUE, location,
+  property_type ENUM('Land','Building','Machinery'),
+  classification ENUM('Commercial','Residential','Industrial','Agricultural') default 'Commercial',
+  assessed_value DECIMAL(14,2), created_at)
+- `rpt_assessments` (assessment_id PK, property_id FK, tax_year YEAR, basic_tax, sef_tax, total_due (annual), created_at)
+  — UNIQUE (property_id, tax_year)
+- `rpt_payments` (payment_id PK, assessment_id FK, quarter TINYINT 1-4 (CHECK), amount_paid, penalty default 0,
+  or_no UNIQUE, payment_date, received_by NULL FK→users, created_at) — UNIQUE (assessment_id, quarter)
+- `inspections` (inspection_id PK, business_id FK, reference_no UNIQUE, inspection_year YEAR, schedule_date DATETIME,
+  reinspection_date DATETIME NULL,
+  status ENUM('Scheduled','In Progress','For Re-inspection','Completed','Cancelled') default 'Scheduled',
+  overall_result ENUM('Pending','Passed','Failed') default 'Pending', certificate_no NULL UNIQUE, created_at)
+- `inspection_items` (item_id PK, inspection_id FK, department ENUM('Structural','Electrical','Mechanical','Fire'),
+  result ENUM('Pending','Passed','Failed') default 'Pending', findings TEXT NULL, inspector_name NULL, inspected_at NULL)
+  — UNIQUE (inspection_id, department)
+- `construction_projects` (project_id PK, business_id FK, reference_no UNIQUE, project_title,
+  project_type ENUM('New Construction','Renovation','Extension','Renovation & Extension','Demolition'),
+  current_stage ENUM('Locational','Building Permit','Construction','Occupancy','Completed') default 'Locational',
+  status ENUM('Active','On Hold','Completed','Rejected') default 'Active', estimated_cost DECIMAL(14,2) NULL,
+  date_filed DATE, created_at)
+- `construction_clearances` (clearance_id PK, project_id FK, clearance_type ENUM('Locational','FSEC','Building','Occupancy'),
+  clearance_no NULL UNIQUE, status ENUM('Pending','Approved','Rejected') default 'Pending',
+  approved_by NULL FK→users, approved_at NULL, remarks NULL) — UNIQUE (project_id, clearance_type)
+- `notifications` (notification_id PK, business_id FK, module (same ENUM as requirements.module), related_id INT,
+  priority ENUM('Info','Warning','Urgent') default 'Warning', message, due_date DATE, is_read default 0, created_at)
+  — UNIQUE (business_id, module, related_id, due_date) prevents duplicate alerts; seeded empty (AlertService fills it)
+- `settings` (setting_key PK VARCHAR(50), setting_value VARCHAR(255), description NULL). Seeded keys:
+  lgu_name, province, expiry_warning_days, bp_renewal_deadline (MM-DD), bp_surcharge_rate, bp_interest_rate_monthly,
+  bp_interest_max_months, rpt_basic_rate, rpt_sef_rate, rpt_penalty_rate_monthly, rpt_penalty_max,
+  hc_validity_months, upload_folder
+- `audit_log` (log_id PK, user_id NULL FK→users,
+  action ENUM('LOGIN','LOGOUT','INSERT','UPDATE','DELETE','STATUS_CHANGE','UPLOAD','PRINT'),
+  table_name NULL, record_id NULL, details NULL, created_at)
 
 ## Business rules (Philippine LGU)
 - Business permit renewal deadline: January 20 each year. Late = 25% surcharge + 2% interest per month (not compounded), max 36 months.
