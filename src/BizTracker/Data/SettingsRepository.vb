@@ -23,14 +23,16 @@ Public NotInheritable Class SettingsRepository
 
     ''' <summary>Re-reads all settings from the database into the cache.</summary>
     Public Shared Sub Reload()
-        _cache = GetAll().ToDictionary(Function(s) s.SettingKey, Function(s) s.SettingValue)
+        Dim all = GetAll()
+        ' If the database could not be read, don't cache an empty list - try again next time.
+        _cache = If(all.Count = 0, Nothing, all.ToDictionary(Function(s) s.SettingKey, Function(s) s.SettingValue))
     End Sub
 
     ''' <summary>Returns a setting's text value, or defaultValue if the key is missing.</summary>
     Public Shared Function GetValue(key As String, Optional defaultValue As String = "") As String
         If _cache Is Nothing Then Reload()
         Dim value As String = Nothing
-        If _cache.TryGetValue(key, value) Then Return value
+        If _cache IsNot Nothing AndAlso _cache.TryGetValue(key, value) Then Return value
         Return defaultValue
     End Function
 
