@@ -43,7 +43,7 @@ Public Class AdminBusinessesPage
         btnEdit = AddAction("Edit Business", "Edit", "secondary", AddressOf Edit_Click)
         btnOwner = AddAction("Create Owner Account", "Owner", "secondary", AddressOf Owner_Click)
         btnActive = AddAction("Deactivate", "Deactivate", "danger", AddressOf Active_Click)
-        Controls.Add(TwoColumns(BuildListCard(), BuildDetailCard(), 58))
+        Controls.Add(TwoColumns(BuildListCard(), BuildDetailCard(), 52))
     End Sub
 
     Public ReadOnly Property SelectedBusiness As Business

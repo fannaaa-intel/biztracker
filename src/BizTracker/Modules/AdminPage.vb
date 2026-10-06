@@ -133,12 +133,12 @@ Public MustInherit Class AdminPage
     Protected Shared Sub MeasureColumns(grid As DataGridView, Optional statusColumn As String = "", Optional freeText As String = "")
         For Each col As DataGridViewColumn In grid.Columns
             If col.Name = freeText Then Continue For
-            Dim need = TextRenderer.MeasureText(col.HeaderText, Theme.SmallBoldFont).Width + 20
+            Dim need = UiHelper.TextWidth(col.HeaderText, Theme.SmallBoldFont) + 20
             Dim isStatus = col.Name = statusColumn
             For Each row As DataGridViewRow In grid.Rows
                 Dim text = If(row.Cells(col.Index).FormattedValue?.ToString(), "")
-                Dim w = If(isStatus, TextRenderer.MeasureText(text, Theme.SmallBoldFont).Width + 44,
-                           TextRenderer.MeasureText(text, Theme.BodyFont).Width + 18)
+                Dim w = If(isStatus, UiHelper.TextWidth(text, Theme.SmallBoldFont) + 44,
+                           UiHelper.TextWidth(text, Theme.BodyFont) + 18)
                 If w > need Then need = w
             Next
             col.MinimumWidth = Math.Max(Dpi(60), need)
@@ -161,11 +161,11 @@ Public MustInherit Class AdminPage
 
     ''' <summary>Text shortened with "…" so it fits maxWidth pixels (full text goes in the tooltip).</summary>
     Protected Shared Function FitText(text As String, textFont As Font, maxWidth As Integer) As String
-        If text Is Nothing OrElse TextRenderer.MeasureText(text, textFont).Width <= maxWidth Then Return text
+        If text Is Nothing OrElse UiHelper.TextWidth(text, textFont) <= maxWidth Then Return text
         Dim low = 0, high = text.Length
         While low < high
             Dim mid = (low + high + 1) \ 2
-            If TextRenderer.MeasureText(text.Substring(0, mid).TrimEnd() & "…", textFont).Width <= maxWidth Then low = mid Else high = mid - 1
+            If UiHelper.TextWidth(text.Substring(0, mid).TrimEnd() & "…", textFont) <= maxWidth Then low = mid Else high = mid - 1
         End While
         Return text.Substring(0, low).TrimEnd() & "…"
     End Function
@@ -225,7 +225,7 @@ Public Class DetailHeader
         If lblInfo Is Nothing Then Return
         Dim w = ClientSize.Width
         Dim badgeW = If(badge.Text <> "", badge.Width + Dpi(10), 0)
-        Dim titleNeed = TextRenderer.MeasureText(lblTitle.Text, lblTitle.Font).Width + 4
+        Dim titleNeed = UiHelper.TextWidth(lblTitle.Text, lblTitle.Font) + 4
         Dim titleW = Math.Max(Dpi(40), Math.Min(titleNeed, w - badgeW))
         lblTitle.SetBounds(0, Dpi(2), titleW, Dpi(26))
         badge.Location = New Point(lblTitle.Right + Dpi(10), Dpi(4))

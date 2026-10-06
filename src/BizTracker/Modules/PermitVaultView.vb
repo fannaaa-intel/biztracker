@@ -267,8 +267,8 @@ Public Class PermitVaultView
                 .Issued = UiHelper.FormatDate(x.d.IssueDate), .Status = x.d.Status
             }).ToList()
 
-        documentNeed = Math.Max(Dpi(130), rows.Select(Function(r) TextRenderer.MeasureText(r.Document, Theme.BodyFont).Width + 16).DefaultIfEmpty(0).Max())
-        holderNeed = Math.Max(Dpi(120), rows.Select(Function(r) TextRenderer.MeasureText(r.Holder, Theme.BodyFont).Width + 16).DefaultIfEmpty(0).Max())
+        documentNeed = Math.Max(Dpi(130), rows.Select(Function(r) UiHelper.TextWidth(r.Document, Theme.BodyFont) + 16).DefaultIfEmpty(0).Max())
+        holderNeed = Math.Max(Dpi(120), rows.Select(Function(r) UiHelper.TextWidth(r.Holder, Theme.BodyFont) + 16).DefaultIfEmpty(0).Max())
         loading = True
         grid.DataSource = rows
         FitGridColumns()

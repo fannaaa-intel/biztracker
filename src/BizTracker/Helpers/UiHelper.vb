@@ -350,6 +350,17 @@ Public Module UiHelper
         Return col
     End Function
 
+    ' ==================== Measuring ====================
+
+    ''' <summary>
+    ''' Width of text as grids and labels draw it. TextRenderer normally treats "&amp;" as a keyboard-shortcut
+    ''' marker and leaves it out of the measurement ("Renovation &amp; Extension" would come out too short),
+    ''' so this measures with NoPrefix.
+    ''' </summary>
+    Public Function TextWidth(text As String, font As Font) As Integer
+        Return TextRenderer.MeasureText(If(text, ""), font, Size.Empty, TextFormatFlags.NoPrefix).Width
+    End Function
+
     ' ==================== Formatting ====================
 
     ''' <summary>₱ 1,234.50</summary>

@@ -28,7 +28,7 @@ Public Class AdminSettingsPage
     Public Sub New(bar As ModuleToolbar)
         MyBase.New(bar)
         btnEdit = AddAction("Edit Value", "Edit", "primary", AddressOf Edit_Click)
-        Controls.Add(TwoColumns(BuildListCard(), BuildDetailCard(), 58))
+        Controls.Add(TwoColumns(BuildListCard(), BuildDetailCard(), 52))
     End Sub
 
     Public ReadOnly Property SelectedSetting As Setting

@@ -476,9 +476,13 @@ Public Class StatCard
         Dim right = ClientSize.Width - CInt(12 * s)
         lblCaption.Width = Math.Max(10, right - lblCaption.Left)
         lblValue.Width = Math.Max(10, right - lblValue.Left)
-        Dim noteLeft = If(badge.Visible, badge.Right + CInt(8 * DeviceDpi / 96.0), lblValue.Left)
+        Dim hasBadge = badge.Text <> ""
+        Dim noteLeft = If(hasBadge, badge.Right + CInt(8 * DeviceDpi / 96.0), lblValue.Left)
         lblNote.Left = noteLeft
         lblNote.Width = Math.Max(10, right - noteLeft)
+        ' A note that does not fit beside the badge is not cut: it moves into the badge's tooltip
+        lblNote.Visible = Not hasBadge OrElse UiHelper.TextWidth(lblNote.Text, lblNote.Font) <= lblNote.Width
+        tips.SetToolTip(badge, If(lblNote.Visible, badge.Text, badge.Text & " · " & lblNote.Text))
     End Sub
 
     Protected Overrides Sub Dispose(disposing As Boolean)

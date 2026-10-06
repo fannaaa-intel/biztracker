@@ -39,7 +39,7 @@ Public Class AdminUsersPage
         btnEdit = AddAction("Edit User", "Edit", "secondary", AddressOf Edit_Click)
         btnReset = AddAction("Reset Password", "Reset", "secondary", AddressOf Reset_Click)
         btnActive = AddAction("Deactivate", "Deactivate", "danger", AddressOf Active_Click)
-        Controls.Add(TwoColumns(BuildListCard(), BuildDetailCard(), 58))
+        Controls.Add(TwoColumns(BuildListCard(), BuildDetailCard(), 52))
     End Sub
 
     ''' <summary>The selected account (for tests).</summary>
@@ -170,8 +170,8 @@ Public Class AdminUsersPage
         header.SetText(u.Username, UserService.GetStatus(u), u.FullName & " · " & u.Role)
         Dim rows As New List(Of Control) From {
             InfoRow(Tips, "Full name", u.FullName, "Role", u.Role),
-            InfoRow(Tips, "Linked business", If(u.BusinessName = "", "None (staff account)", u.BusinessName),
-                    "Last sign-in", If(u.LastLogin.HasValue, u.LastLogin.Value.ToString("MMM d, yyyy h:mm tt"), "Never")),
+            InfoRow(Tips, "Linked business", If(u.BusinessName = "", "None (staff)", u.BusinessName),
+                    "Last sign-in", If(u.LastLogin.HasValue, FormatSignIn(u.LastLogin.Value), "Never")),
             InfoRow(Tips, "Account created", UiHelper.FormatDate(u.CreatedAt), "Status", UserService.GetStatus(u)),
             HeadingRow("Access"),
             NoteRow(Tips, UserService.DescribeRole(u.Role), Theme.TextDark)
@@ -186,6 +186,11 @@ Public Class AdminUsersPage
         End If
         detailsList.SetRows(rows)
     End Sub
+
+    ''' <summary>"Oct 6, 11:06 PM" this year, "Oct 6, 2025" for older sign-ins (short enough for a narrow window).</summary>
+    Private Shared Function FormatSignIn(value As Date) As String
+        Return value.ToString(If(value.Year = Date.Today.Year, "MMM d, h:mm tt", "MMM d, yyyy"))
+    End Function
 
     ' =====================================================================
     '  Actions

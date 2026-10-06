@@ -343,7 +343,7 @@ Public Class HealthCertificateView
         Dim w = detailHeader.ClientSize.Width
         Dim gap = CInt(10 * DeviceDpi / 96.0)
         Dim badgeW = If(badgeDetail.Visible, badgeDetail.Width + gap, 0)
-        Dim nameNeed = TextRenderer.MeasureText(lblDetailName.Text, lblDetailName.Font).Width + 4
+        Dim nameNeed = UiHelper.TextWidth(lblDetailName.Text, lblDetailName.Font) + 4
         lblDetailName.SetBounds(0, 0, Math.Max(40, Math.Min(nameNeed, w - badgeW)), CInt(28 * DeviceDpi / 96.0))
         badgeDetail.Location = New Point(lblDetailName.Right + gap, CInt(3 * DeviceDpi / 96.0))
         lblDetailInfo.SetBounds(0, CInt(30 * DeviceDpi / 96.0), w, CInt(20 * DeviceDpi / 96.0))

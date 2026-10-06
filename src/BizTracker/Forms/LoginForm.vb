@@ -178,7 +178,7 @@ Public Class LoginForm
 
         If lguName <> "" Then
             TextRenderer.DrawText(g, lguName & If(province <> "", ", " & province, ""), Theme.BodyFont,
-                                  New Point(x, CInt(258 * s)), Color.White)
+                                  New Point(x, CInt(258 * s)), Color.White, TextFormatFlags.NoPrefix)   ' show "&" as typed
         End If
 
         ' The six services, as a checklist

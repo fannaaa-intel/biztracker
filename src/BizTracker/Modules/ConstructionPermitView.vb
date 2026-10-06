@@ -282,7 +282,7 @@ Public Class ConstructionPermitView
                 .Status = p.Status, .Filed = UiHelper.FormatDate(p.DateFiled)
             }).ToList()
 
-        titleNeed = Math.Max(Dpi(120), rows.Select(Function(r) TextRenderer.MeasureText(r.Title, Theme.BodyFont).Width + 16).DefaultIfEmpty(0).Max())
+        titleNeed = Math.Max(Dpi(120), rows.Select(Function(r) UiHelper.TextWidth(r.Title, Theme.BodyFont) + 16).DefaultIfEmpty(0).Max())
         loading = True
         grid.DataSource = rows
         FitGridColumns()

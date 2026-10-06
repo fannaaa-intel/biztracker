@@ -409,7 +409,7 @@ Public Class RealPropertyTaxView
                 .IsOverdue = r.WorstStatus = StatusService.Overdue
             }).ToList()
 
-        locationNeed = Math.Max(Dpi(120), rows.Select(Function(r) TextRenderer.MeasureText(r.Location, Theme.BodyFont).Width + 16).DefaultIfEmpty(0).Max())
+        locationNeed = Math.Max(Dpi(120), rows.Select(Function(r) UiHelper.TextWidth(r.Location, Theme.BodyFont) + 16).DefaultIfEmpty(0).Max())
         loading = True
         grid.DataSource = rows
         ' Rows with an overdue quarter get a light red background
