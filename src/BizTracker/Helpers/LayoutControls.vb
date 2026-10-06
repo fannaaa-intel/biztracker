@@ -38,6 +38,16 @@ Public Class StepTracker
         End Set
     End Property
 
+    ''' <summary>Circle + gap + two label lines, so the labels are never cut (e.g. at 150% screen scaling).</summary>
+    Private Function RequiredHeight() As Integer
+        Dim s = DeviceDpi / 96.0F
+        Return CInt(28 * s) + CInt(8 * s) + TextRenderer.MeasureText("Ag", Theme.SmallBoldFont).Height * 2 + CInt(4 * s)
+    End Function
+
+    Protected Overrides Sub SetBoundsCore(x As Integer, y As Integer, width As Integer, height As Integer, specified As BoundsSpecified)
+        MyBase.SetBoundsCore(x, y, width, Math.Max(height, RequiredHeight()), specified)
+    End Sub
+
     Protected Overrides Sub OnPaint(e As PaintEventArgs)
         Dim g = e.Graphics
         g.Clear(UiHelper.EffectiveBackColor(Parent))
@@ -133,6 +143,11 @@ Public Class SegmentedTabs
             RaiseEvent SelectedIndexChanged(Me, EventArgs.Empty)
         End Set
     End Property
+
+    Protected Overrides Sub SetBoundsCore(x As Integer, y As Integer, width As Integer, height As Integer, specified As BoundsSpecified)
+        ' Never shorter than the text needs (e.g. at 150% screen scaling)
+        MyBase.SetBoundsCore(x, y, width, Math.Max(height, TextRenderer.MeasureText("Ag", Theme.SmallBoldFont).Height + CInt(16 * DeviceDpi / 96.0)), specified)
+    End Sub
 
     Private Function IndexAt(x As Integer) As Integer
         If _tabs.Length = 0 Then Return -1

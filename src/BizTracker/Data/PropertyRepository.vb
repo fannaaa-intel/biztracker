@@ -50,6 +50,20 @@ Public NotInheritable Class PropertyRepository
             Db.P("@id", p.PropertyId)) > 0
     End Function
 
+    ''' <summary>True if another property already uses this PIN (ignorePropertyId = the one being edited).</summary>
+    Public Shared Function PinExists(pin As String, Optional ignorePropertyId As Integer = 0) As Boolean
+        Dim count = Db.ExecuteScalar("SELECT COUNT(*) FROM properties WHERE pin = @pin AND property_id <> @id",
+                                     Db.P("@pin", pin.Trim()), Db.P("@id", ignorePropertyId))
+        Return count IsNot Nothing AndAlso Convert.ToInt32(count) > 0
+    End Function
+
+    ''' <summary>True if another property already uses this Tax Declaration No.</summary>
+    Public Shared Function TdNoExists(tdNo As String, Optional ignorePropertyId As Integer = 0) As Boolean
+        Dim count = Db.ExecuteScalar("SELECT COUNT(*) FROM properties WHERE td_no = @td AND property_id <> @id",
+                                     Db.P("@td", tdNo.Trim()), Db.P("@id", ignorePropertyId))
+        Return count IsNot Nothing AndAlso Convert.ToInt32(count) > 0
+    End Function
+
     ' ---------------- helpers ----------------
 
     Private Shared Function ToList(table As DataTable) As List(Of RealProperty)

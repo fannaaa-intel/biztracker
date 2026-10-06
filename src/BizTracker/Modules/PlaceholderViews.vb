@@ -11,16 +11,6 @@ Public Class DashboardView
     End Sub
 End Class
 
-Public Class RealPropertyTaxView
-    Inherits ModuleView
-    Public Sub New()
-        ShowPlaceholder(Icons.Bank, "Real Property Tax",
-                        "Property ledger, yearly assessments (basic + SEF), quarterly payments " &
-                        "with official receipts, penalties and tax clearance.",
-                        "Coming in Phase 8")
-    End Sub
-End Class
-
 Public Class AnnualInspectionView
     Inherits ModuleView
     Public Sub New()

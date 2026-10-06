@@ -283,7 +283,7 @@ Public Class HealthCertificateView
         Dim card As New RoundedPanel With {.Dock = DockStyle.Fill, .Margin = New Padding(8, 0, 0, 0), .Padding = New Padding(18, 14, 18, 16)}
 
         detailHeader.Dock = DockStyle.Top
-        detailHeader.Height = 52
+        detailHeader.Height = Dpi(52)
         detailHeader.BackColor = Color.White
         lblDetailName.Font = Theme.SubtitleFont
         lblDetailName.ForeColor = Theme.TextDark

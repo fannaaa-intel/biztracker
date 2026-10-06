@@ -38,7 +38,7 @@ Public Class ModernDialog
         lblSubtitle.AutoEllipsis = True
         lblSubtitle.SetBounds(24, 46, 510, 22)
         Header.Controls.AddRange({lblTitle, lblSubtitle})
-        AddHandler Header.Resize, Sub() lblSubtitle.Width = Math.Max(50, Header.ClientSize.Width - 48)
+        AddHandler Header.Layout, Sub() lblSubtitle.Width = Math.Max(50, Header.ClientSize.Width - lblSubtitle.Left * 2)
         AddHandler Header.Paint,
             Sub(s, e)
                 Using pen As New Pen(Theme.Divider)
@@ -70,7 +70,8 @@ Public Class ModernDialog
     ''' <summary>Adds a footer button (added right-to-left: add the main action first).</summary>
     Protected Function AddFooterButton(text As String, Optional style As String = "secondary") As Button
         Dim btn As New Button With {.Text = text, .Height = 38, .Margin = New Padding(8, 0, 0, 0)}
-        btn.Width = Math.Max(100, TextRenderer.MeasureText(text, Theme.BodyBoldFont).Width + 36)
+        ' Fields are laid out at 100% and scaled on load, so measure the text back in 100% units
+        btn.Width = Math.Max(100, CInt(TextRenderer.MeasureText(text, Theme.BodyBoldFont).Width / UiHelper.DpiScale) + 36)
         Select Case style
             Case "primary" : UiHelper.StylePrimaryButton(btn)
             Case "danger" : UiHelper.StyleDangerButton(btn)
@@ -110,6 +111,21 @@ Public Class ModernDialog
         val.SetBounds(left, top + 18, width, 22)
         Tips.SetToolTip(val, value)
         parent.Controls.AddRange({cap, val})
+    End Sub
+
+    Protected Overrides Sub OnLoad(e As EventArgs)
+        ' Dialogs are built at 100% (96 DPI) in code. WinForms does not auto-scale them, so scale
+        ' every field once for the screen scaling (e.g. 150%) - the footer height tells whether it was done.
+        Dim factor = UiHelper.DpiScale
+        If factor > 1.01F AndAlso Footer.Height < UiHelper.Dpi(64) - 2 Then
+            Scale(New SizeF(factor, factor))
+        End If
+        MyBase.OnLoad(e)
+        If StartPosition = FormStartPosition.CenterParent AndAlso Owner IsNot Nothing Then
+            CenterToParent()
+        ElseIf StartPosition = FormStartPosition.CenterParent OrElse StartPosition = FormStartPosition.CenterScreen Then
+            CenterToScreen()
+        End If
     End Sub
 
     Protected Overrides Sub Dispose(disposing As Boolean)

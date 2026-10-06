@@ -5,6 +5,30 @@ Imports System.Drawing.Drawing2D
 ''' </summary>
 Public Module UiHelper
 
+    ' ==================== DPI ====================
+
+    Private _dpiScale As Single = 0
+
+    ''' <summary>
+    ''' Screen scaling (1.0 at 100%, 1.5 at 150%). Module screens and their detail rows are built
+    ''' in code after the window is scaled, so pixel sizes there must go through Dpi().
+    ''' </summary>
+    Public ReadOnly Property DpiScale As Single
+        Get
+            If _dpiScale = 0 Then
+                Using g = Graphics.FromHwnd(IntPtr.Zero)
+                    _dpiScale = Math.Max(1.0F, g.DpiX / 96.0F)
+                End Using
+            End If
+            Return _dpiScale
+        End Get
+    End Property
+
+    ''' <summary>A size in 100%-scale pixels converted for the current screen scaling.</summary>
+    Public Function Dpi(value As Integer) As Integer
+        Return CInt(Math.Round(value * DpiScale))
+    End Function
+
     ' ==================== Buttons ====================
 
     ''' <summary>Solid blue button for the main action on a screen.</summary>
@@ -95,8 +119,11 @@ Public Module UiHelper
         Dim box As New Panel With {.BorderStyle = BorderStyle.FixedSingle, .BackColor = Color.White, .Height = height}
         combo.ItemHeight = Math.Max(16, box.ClientSize.Height - 6)
         box.Controls.Add(combo)
-        AddHandler box.Resize,
+        ' Layout (not Resize) runs again after a dialog is DPI-scaled
+        AddHandler box.Layout,
             Sub()
+                Dim itemH = Math.Max(16, box.ClientSize.Height - 6)
+                If combo.ItemHeight <> itemH Then combo.ItemHeight = itemH
                 combo.Width = box.ClientSize.Width
                 combo.Location = New Point(0, (box.ClientSize.Height - combo.Height) \ 2)
             End Sub
@@ -129,7 +156,8 @@ Public Module UiHelper
             }
             box.Controls.Add(icon)
             ' Stay 2px inside the box so the icon never covers the rounded border
-            AddHandler box.Resize, Sub() icon.SetBounds(12, 2, 24, box.ClientSize.Height - 4)
+            ' (Layout, not Resize: Layout runs again after the window is DPI-scaled)
+            AddHandler box.Layout, Sub() icon.SetBounds(12, 2, 24, box.ClientSize.Height - 4)
             AddHandler icon.Click, Sub() textBox.Focus()
         End If
 
@@ -138,11 +166,10 @@ Public Module UiHelper
         textBox.ForeColor = Theme.TextDark
         textBox.BackColor = Color.White
         textBox.PlaceholderText = placeholder
-        textBox.Anchor = AnchorStyles.Left Or AnchorStyles.Right
         box.Controls.Add(textBox)
 
         ' Keep the text box vertically centered and full width inside the box
-        AddHandler box.Resize,
+        AddHandler box.Layout,
             Sub()
                 textBox.Width = box.ClientSize.Width - box.Padding.Horizontal
                 textBox.Location = New Point(box.Padding.Left, (box.ClientSize.Height - textBox.Height) \ 2)
