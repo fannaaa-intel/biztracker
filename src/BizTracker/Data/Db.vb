@@ -233,7 +233,7 @@ Public NotInheritable Class Db
                     Return "MySQL rejected the username or password in App.config."
                 Case 1049
                     Return "The database 'biztracker_db' does not exist yet." & vbCrLf &
-                           "Please import database/biztracker_schema.sql in phpMyAdmin."
+                           "Please import database/biztracker_db.sql in phpMyAdmin (see README.md)."
                 Case 1062
                     Return "This record already exists (duplicate value)."
                 Case 1451

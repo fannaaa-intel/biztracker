@@ -76,6 +76,7 @@ Public Class UserDialog
         If Not isNew Then
             txtUsername.ReadOnly = True
             txtUsername.BackColor = Theme.SoftBackground
+            txtUsername.TabStop = False       ' cannot change: start (and tab) on Full name
             Tips.SetToolTip(txtUsername, "Usernames cannot be changed")
         End If
         StyleText(txtName, account.FullName, "e.g. Juan Dela Cruz", 150)
