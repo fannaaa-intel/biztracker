@@ -11,16 +11,6 @@ Public Class DashboardView
     End Sub
 End Class
 
-Public Class SanitaryPermitView
-    Inherits ModuleView
-    Public Sub New()
-        ShowPlaceholder(Icons.CheckShield, "Sanitary Permits",
-                        "Applications, laboratory prerequisites, on-site inspection scores and " &
-                        "issuance of sanitary permits (valid until December 31).",
-                        "Coming in Phase 7")
-    End Sub
-End Class
-
 Public Class RealPropertyTaxView
     Inherits ModuleView
     Public Sub New()

@@ -88,6 +88,23 @@ Public Module UiHelper
     ' ==================== Inputs ====================
 
     ''' <summary>
+    ''' Puts a styled (flat, borderless) combo box inside a white bordered box of the given height,
+    ''' so it lines up with the FixedSingle text boxes of a dialog. Add the returned panel to the form.
+    ''' </summary>
+    Public Function CreateComboBox(combo As ComboBox, height As Integer) As Panel
+        Dim box As New Panel With {.BorderStyle = BorderStyle.FixedSingle, .BackColor = Color.White, .Height = height}
+        combo.ItemHeight = Math.Max(16, box.ClientSize.Height - 6)
+        box.Controls.Add(combo)
+        AddHandler box.Resize,
+            Sub()
+                combo.Width = box.ClientSize.Width
+                combo.Location = New Point(0, (box.ClientSize.Height - combo.Height) \ 2)
+            End Sub
+        AddHandler box.EnabledChanged, Sub() box.BackColor = If(box.Enabled, Color.White, Theme.SoftBackground)
+        Return box
+    End Function
+
+    ''' <summary>
     ''' Wraps a TextBox in a rounded, bordered box that turns blue when focused.
     ''' Add the returned panel to the form (not the TextBox itself).
     ''' </summary>

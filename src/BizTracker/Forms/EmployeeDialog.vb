@@ -64,15 +64,7 @@ Public Class EmployeeDialog
         If cboCategory.SelectedIndex < 0 Then cboCategory.SelectedIndex = 0
         UiHelper.StyleComboBox(cboCategory)
         ' A flat combo has no border of its own: put it in a bordered box as tall as the text boxes
-        Dim categoryBox As New Panel With {.BorderStyle = BorderStyle.FixedSingle, .BackColor = Color.White, .Height = txtPosition.Height}
-        cboCategory.ItemHeight = Math.Max(16, categoryBox.ClientSize.Height - 6)
-        categoryBox.Controls.Add(cboCategory)
-        AddHandler categoryBox.Resize,
-            Sub()
-                cboCategory.Width = categoryBox.ClientSize.Width
-                cboCategory.Location = New Point(0, (categoryBox.ClientSize.Height - cboCategory.Height) \ 2)
-            End Sub
-        errCategory = AddField("Category", categoryBox, 290, 176, 246)
+        errCategory = AddField("Category", UiHelper.CreateComboBox(cboCategory, txtPosition.Height), 290, 176, 246)
 
         Dim note As New Label With {
             .Text = "Food Handlers prepare or serve food. Everyone else (cashier, guard, driver...) is Non-Food.",

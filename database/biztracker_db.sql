@@ -341,6 +341,7 @@ INSERT INTO settings (setting_key, setting_value, description) VALUES
 ('rpt_penalty_rate_monthly', '0.02',  'RPT late payment penalty per month'),
 ('rpt_penalty_max',          '0.72',  'RPT max penalty (36 months)'),
 ('hc_validity_months',       '12',    'Health certificate validity in months'),
+('sp_passing_score',         '75',    'Minimum sanitary inspection score (0-100) to issue a sanitary permit'),
 ('upload_folder',            'uploads', 'Folder for uploaded requirement files');
 
 -- ---------- Businesses ----------
@@ -399,6 +400,12 @@ INSERT INTO requirements (business_id, module, related_id, document_name, file_p
 (1, 'Sanitary Permit', 1, 'Microbiological Water Test',        'uploads/1/water_test.pdf',       'Verified',       @JAN1 + INTERVAL 3 DAY, 3, @JAN1 + INTERVAL 4 DAY),
 (1, 'Sanitary Permit', 1, 'Physico-Chemical Analysis',         'uploads/1/physchem.pdf',         'Verified',       @JAN1 + INTERVAL 3 DAY, 3, @JAN1 + INTERVAL 4 DAY),
 (1, 'Sanitary Permit', 1, 'Pest Control Certificate',          'uploads/1/pest_control.pdf',     'Verified',       @JAN1 + INTERVAL 3 DAY, 3, @JAN1 + INTERVAL 4 DAY),
+(2, 'Sanitary Permit', 2, 'Microbiological Water Test',        'uploads/2/water_test.pdf',       'Verified',       @JAN1 + INTERVAL 5 DAY, 3, @JAN1 + INTERVAL 6 DAY),
+(2, 'Sanitary Permit', 2, 'Physico-Chemical Analysis',         'uploads/2/physchem.pdf',         'Verified',       @JAN1 + INTERVAL 5 DAY, 3, @JAN1 + INTERVAL 6 DAY),
+(2, 'Sanitary Permit', 2, 'Pest Control Certificate',          'uploads/2/pest_control.pdf',     'Verified',       @JAN1 + INTERVAL 5 DAY, 3, @JAN1 + INTERVAL 6 DAY),
+(3, 'Sanitary Permit', 3, 'Microbiological Water Test',        'uploads/3/water_test.pdf',       'Verified',       CURDATE() - INTERVAL 9 DAY, 3, CURDATE() - INTERVAL 7 DAY),
+(3, 'Sanitary Permit', 3, 'Physico-Chemical Analysis',         'uploads/3/physchem.pdf',         'Verified',       CURDATE() - INTERVAL 9 DAY, 3, CURDATE() - INTERVAL 7 DAY),
+(3, 'Sanitary Permit', 3, 'Pest Control Certificate',          'uploads/3/pest_control.pdf',     'Verified',       CURDATE() - INTERVAL 9 DAY, 3, CURDATE() - INTERVAL 7 DAY),
 (1, 'Construction Permit', 1, 'Architectural & Structural Plans', 'uploads/1/arch_struct_plans.pdf', 'Verified', CURDATE() - INTERVAL 40 DAY, 5, CURDATE() - INTERVAL 35 DAY),
 (1, 'Construction Permit', 1, 'Electrical Plans',              'uploads/1/electrical_plans.pdf', 'Verified',       CURDATE() - INTERVAL 40 DAY, 5, CURDATE() - INTERVAL 35 DAY),
 (1, 'Construction Permit', 1, 'Plumbing / Sanitary Plans',     'uploads/1/plumbing_plans.pdf',   'Submitted',      CURDATE() - INTERVAL 40 DAY, NULL, NULL),

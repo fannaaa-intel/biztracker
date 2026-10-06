@@ -304,4 +304,21 @@ Public NotInheritable Class BusinessPermitService
         Return True
     End Function
 
+    ''' <summary>
+    ''' Cross-module endorsement: when another office finishes its work (sanitary permit issued,
+    ''' RPT paid, fire inspection passed, locational clearance approved), its endorsement on the
+    ''' business's latest application (not Rejected, not yet Issued) is set to Endorsed.
+    ''' Returns the application's reference number, or Nothing when there was nothing to endorse.
+    ''' </summary>
+    Public Shared Function AutoEndorse(businessId As Integer, office As String, remarks As String) As String
+        Dim p = GetLatestApplication(businessId)
+        If p Is Nothing OrElse IsFinal(p.Status) Then Return Nothing
+        Dim current = BusinessPermitRepository.GetEndorsements(p.PermitId).FirstOrDefault(Function(e) e.Office = office)
+        If current Is Nothing OrElse current.Status = "Endorsed" Then Return Nothing
+        If Not BusinessPermitRepository.SetEndorsement(p.PermitId, office, "Endorsed", Session.UserId, remarks) Then Return Nothing
+        AuditService.Log(AuditActions.StatusChange, "clearance_endorsements", p.PermitId,
+                         office & " endorsement -> Endorsed automatically (" & p.ReferenceNo & "): " & remarks)
+        Return p.ReferenceNo
+    End Function
+
 End Class
