@@ -103,7 +103,7 @@ Public Class AdminAuditPage
             .Dock = DockStyle.Top, .Height = Dpi(66), .ColumnCount = 5, .RowCount = 1, .BackColor = Color.White,
             .Margin = New Padding(0), .Padding = New Padding(0, 0, 0, Dpi(8))
         }
-        For Each pct In {18.0F, 18.0F, 22.0F, 22.0F, 20.0F}
+        For Each pct In {21.0F, 21.0F, 20.0F, 20.0F, 18.0F}
             row.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, pct))
         Next
         row.RowStyles.Add(New RowStyle(SizeType.Percent, 100))
@@ -115,6 +115,13 @@ Public Class AdminAuditPage
             dtp.ShowCheckBox = True
             dtp.MaxDate = Date.Today.AddYears(1)
             AddHandler dtp.ValueChanged, Sub() If filtersReady Then RefreshData()
+            ' Narrow window: "10/07/26" instead of a cut "Oct 07, 202"
+            Dim picker = dtp
+            AddHandler picker.Resize,
+                Sub()
+                    Dim need = TextRenderer.MeasureText("Sep 30, 2026", picker.Font).Width + Dpi(60)   ' + check box + drop-down button
+                    picker.CustomFormat = If(picker.Width >= need, "MMM dd, yyyy", "MM/dd/yy")
+                End Sub
         Next
         Tips.SetToolTip(dtpFrom, "Untick to include everything before the ""To"" date")
         Tips.SetToolTip(dtpTo, "Untick to include everything after the ""From"" date")

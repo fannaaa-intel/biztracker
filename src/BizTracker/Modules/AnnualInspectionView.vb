@@ -474,7 +474,7 @@ Public Class AnnualInspectionView
                 links.Add(New RowLink(If(item.Result = InspectionService.Failed, "Re-inspect", "Record"), Theme.SidebarBlue,
                                       Sub() OpenResultDialog(dept)))
             End If
-            rows.Add(ListRow(tips, dept, detail, item.Result, links))
+            rows.Add(ListRow(tips, dept, detail, item.Result, links, Nothing, If(canManage, LinkColumnWidth("Re-inspect"), 0)))
         Next
         Dim passed = InspectionService.GetPassedCount(items)
         If selected.Status = InspectionService.Completed Then

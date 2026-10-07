@@ -235,8 +235,10 @@ Public Class MainForm
         lblTitle.Location = New Point(26, 12)
         lblSubtitle.Font = Theme.BodyFont
         lblSubtitle.ForeColor = Theme.TextMuted
-        lblSubtitle.AutoSize = True
-        lblSubtitle.Location = New Point(28, 44)
+        ' Fixed width up to the user area: a long subtitle ends with "…" instead of running under the bell
+        lblSubtitle.AutoSize = False
+        lblSubtitle.AutoEllipsis = True
+        lblSubtitle.SetBounds(28, 44, 400, 22)
 
         ' Right side, laid out right-to-left: logout | divider | user | bell
         Dim right As New FlowLayoutPanel With {
@@ -275,6 +277,7 @@ Public Class MainForm
 
         right.Controls.AddRange({btnLogout, divider, userBox, btnBell})
         topBar.Controls.AddRange({lblTitle, lblSubtitle, right})
+        AddHandler topBar.Layout, Sub() lblSubtitle.Width = Math.Max(0, right.Left - lblSubtitle.Left - Dpi(16))
     End Sub
 
     ' ==================== Behaviour ====================
@@ -326,6 +329,7 @@ Public Class MainForm
         lblTitle.Text = item.Title
         lblSubtitle.Text = If(currentView.Subtitle <> "", currentView.Subtitle,
                               Date.Today.ToString("dddd, MMMM d, yyyy"))
+        tips.SetToolTip(lblSubtitle, lblSubtitle.Text)     ' full text when it is cut with "…"
         For Each btn In navButtons
             btn.IsActive = (btn.Screen = screen)
         Next
@@ -390,9 +394,11 @@ Public Class MainForm
     End Sub
 
     Private Sub ShowUrgentSummary()
-        Dim summary = AlertService.GetUrgentSummary()
-        If summary Is Nothing Then Return
-        If UiHelper.Confirm(summary, AlertService.GetUrgentTitle(AlertService.GetUrgentUnread().Count), "View Notifications", "Later", warning:=True) Then
+        Dim urgentCount = AlertService.GetUrgentUnread().Count
+        If urgentCount = 0 Then Return
+        ' One block per alert (headline + detail) so the list is easy to read
+        If ModernMessageBox.AskWithList(AlertService.GetUrgentItems(), AlertService.GetUrgentFooter(),
+                                        AlertService.GetUrgentTitle(urgentCount), "View Notifications", "Later", warning:=True) Then
             OpenNotifications()
         End If
     End Sub

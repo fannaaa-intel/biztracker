@@ -379,42 +379,76 @@ End Class
 
 ''' <summary>
 ''' One row of the dashboard's Action Required list:
-'''   (dot) Title ......................................... ›
-'''         Status · detail
-''' The dot and status are colored (red urgent, amber warning). The whole row is clickable when the
+'''   (dot) Title ..................................... [Status]  ›
+'''         detail (muted, one line; full text in the tooltip)
+''' The status is a colored pill on the right (not mixed into the text), so the eye reads
+''' the title first, the status second and the details last. The whole row is clickable when the
 ''' user may open the module (hand cursor, hover tint, chevron); otherwise it is information only.
+''' Several pending endorsements of one application can share one row ("5 endorsements pending").
 ''' </summary>
 Public Class ActionRow
     Inherits Control
 
     Private _hover As Boolean
+    Private ReadOnly badge As New StatusBadge()
 
+    ''' <summary>The first (or only) item of the row - it decides where a click goes.</summary>
     Public ReadOnly Property Item As ActionItem
+    ''' <summary>Every item shown by this row (more than one for grouped endorsements).</summary>
+    Public ReadOnly Property Items As List(Of ActionItem)
     Public ReadOnly Property CanOpen As Boolean
+    ''' <summary>Bold first line.</summary>
+    Public ReadOnly Property DisplayTitle As String
+    ''' <summary>Muted second line.</summary>
+    Public ReadOnly Property DisplayDetail As String
 
     ''' <summary>Raised when a clickable row is clicked.</summary>
     Public Event OpenRequested As EventHandler
 
     Public Sub New(actionItem As ActionItem, openAllowed As Boolean)
-        SetStyle(ControlStyles.UserPaint Or ControlStyles.AllPaintingInWmPaint Or
-                 ControlStyles.OptimizedDoubleBuffer Or ControlStyles.ResizeRedraw, True)
-        Item = actionItem
-        CanOpen = openAllowed
-        Text = actionItem.Title
-        Cursor = If(openAllowed, Cursors.Hand, Cursors.Default)
-        Height = RowHeight(DeviceDpi)
+        Me.New(New List(Of ActionItem) From {actionItem}, openAllowed)
     End Sub
 
-    ''' <summary>Two text lines + padding.</summary>
+    ''' <summary>One row for several items of the same kind (e.g. the pending endorsements of one application).</summary>
+    Public Sub New(group As List(Of ActionItem), openAllowed As Boolean)
+        SetStyle(ControlStyles.UserPaint Or ControlStyles.AllPaintingInWmPaint Or
+                 ControlStyles.OptimizedDoubleBuffer Or ControlStyles.ResizeRedraw, True)
+        Items = group
+        Item = group(0)
+        CanOpen = openAllowed
+        If group.Count = 1 Then
+            DisplayTitle = Item.Title
+            DisplayDetail = Item.Detail
+        Else
+            ' "5 endorsements pending" / "Barangay, Sanitary, RPT, Fire, Zoning · BP-2027-00002"
+            DisplayTitle = group.Count & " endorsements " & Item.Status.ToLowerInvariant()
+            DisplayDetail = String.Join(", ", group.Select(Function(x) x.Title.Replace(" endorsement", ""))) & " · " & Item.Detail
+        End If
+        Text = DisplayTitle
+        Cursor = If(openAllowed, Cursors.Hand, Cursors.Default)
+        Height = RowHeight(DeviceDpi)
+
+        badge.Text = Item.Status
+        badge.Height = CInt(24 * DeviceDpi / 96.0)
+        badge.Cursor = Cursor
+        AddHandler badge.Click, Sub() OpenItem()
+        AddHandler badge.MouseEnter, Sub() OnMouseEnter(EventArgs.Empty)
+        AddHandler badge.MouseLeave, Sub()
+                                         If Not ClientRectangle.Contains(PointToClient(MousePosition)) Then OnMouseLeave(EventArgs.Empty)
+                                     End Sub
+        Controls.Add(badge)
+    End Sub
+
+    ''' <summary>Two text lines + generous padding.</summary>
     Public Shared Function RowHeight(dpi As Integer) As Integer
         Dim s = dpi / 96.0
-        Return TextRenderer.MeasureText("Ag", Theme.BodyBoldFont).Height + TextRenderer.MeasureText("Ag", Theme.SmallFont).Height + CInt(20 * s)
+        Return TextRenderer.MeasureText("Ag", Theme.BodyBoldFont).Height + TextRenderer.MeasureText("Ag", Theme.SmallFont).Height + CInt(28 * s)
     End Function
 
-    ''' <summary>"Expired · Health certificate HC-2025-00031 · 5 days ago (Oct 1, 2026)"</summary>
+    ''' <summary>"Expired · Health certificate HC-2025-00031 · 5 days ago (Oct 1, 2026)" (tooltip / tests).</summary>
     Public ReadOnly Property DetailLine As String
         Get
-            Return Item.Status & "  ·  " & Item.Detail
+            Return Item.Status & "  ·  " & DisplayDetail
         End Get
     End Property
 
@@ -429,11 +463,27 @@ Public Class ActionRow
     End Sub
 
     Protected Overrides Sub OnMouseEnter(e As EventArgs)
-        _hover = CanOpen : Invalidate() : MyBase.OnMouseEnter(e)
+        _hover = CanOpen : Invalidate() : badge.Invalidate() : MyBase.OnMouseEnter(e)
     End Sub
 
     Protected Overrides Sub OnMouseLeave(e As EventArgs)
-        _hover = False : Invalidate() : MyBase.OnMouseLeave(e)
+        _hover = False : Invalidate() : badge.Invalidate() : MyBase.OnMouseLeave(e)
+    End Sub
+
+    Private ReadOnly Property ChevronWidth As Integer
+        Get
+            Return If(CanOpen, CInt(22 * DeviceDpi / 96.0), 0)
+        End Get
+    End Property
+
+    Protected Overrides Sub OnLayout(e As LayoutEventArgs)
+        MyBase.OnLayout(e)
+        ' Pill on the right, level with the title
+        Dim s = DeviceDpi / 96.0F
+        Dim titleH = TextRenderer.MeasureText("Ag", Theme.BodyBoldFont).Height
+        Dim detailH = TextRenderer.MeasureText("Ag", Theme.SmallFont).Height
+        Dim top = (Height - titleH - detailH - CInt(4 * s)) \ 2
+        badge.Location = New Point(Width - ChevronWidth - CInt(6 * s) - badge.Width, top + (titleH - badge.Height) \ 2)
     End Sub
 
     Protected Overrides Sub OnPaint(e As PaintEventArgs)
@@ -448,7 +498,7 @@ Public Class ActionRow
         Dim dot = CInt(10 * s)
         Dim titleH = TextRenderer.MeasureText("Ag", Theme.BodyBoldFont).Height
         Dim detailH = TextRenderer.MeasureText("Ag", Theme.SmallFont).Height
-        Dim top = (Height - titleH - detailH - CInt(2 * s)) \ 2
+        Dim top = (Height - titleH - detailH - CInt(4 * s)) \ 2
         g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
         Using brush As New SolidBrush(statusColor)
             g.FillEllipse(brush, CInt(4 * s), top + (titleH - dot) \ 2, dot, dot)
@@ -456,34 +506,27 @@ Public Class ActionRow
         g.SmoothingMode = Drawing2D.SmoothingMode.None
 
         ' Chevron (clickable rows only)
-        Dim chevronW = If(CanOpen, CInt(22 * s), 0)
         If CanOpen Then
-            TextRenderer.DrawText(g, ChrW(&H203A), Theme.SubtitleFont, New Rectangle(Width - chevronW, 0, chevronW, Height),
+            TextRenderer.DrawText(g, ChrW(&H203A), Theme.SubtitleFont, New Rectangle(Width - ChevronWidth, 0, ChevronWidth, Height),
                                   If(_hover, Theme.SidebarBlue, Theme.TextMuted),
                                   TextFormatFlags.HorizontalCenter Or TextFormatFlags.VerticalCenter Or TextFormatFlags.NoPrefix)
         End If
 
-        ' Title + status/detail line
-        Dim left = CInt(22 * s)
-        Dim textW = Width - left - chevronW - CInt(6 * s)
-        TextRenderer.DrawText(g, Item.Title, Theme.BodyBoldFont, New Rectangle(left, top, textW, titleH), Theme.TextDark,
-                              TextFormatFlags.Left Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine)
-        Dim statusText = Item.Status & "  ·  "
-        Dim statusW = Math.Min(textW, TextRenderer.MeasureText(g, statusText, Theme.SmallBoldFont, Size.Empty,
-                                                                TextFormatFlags.NoPadding Or TextFormatFlags.NoPrefix).Width)
-        Dim y2 = top + titleH + CInt(2 * s)
-        TextRenderer.DrawText(g, statusText, Theme.SmallBoldFont, New Rectangle(left, y2, statusW, detailH), statusColor,
-                              TextFormatFlags.Left Or TextFormatFlags.NoPadding Or TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine)
-        ' The full detail when it fits, else the short one (narrow window)
-        Dim detailW = Math.Max(0, textW - statusW)
-        Dim detail = Item.Detail
-        If Item.ShortDetail <> "" AndAlso TextRenderer.MeasureText(g, detail, Theme.SmallFont, Size.Empty,
-                                                                     TextFormatFlags.NoPadding Or TextFormatFlags.NoPrefix).Width > detailW Then
+        ' Title (stops before the pill) + detail line (full width, muted)
+        Dim left = CInt(24 * s)
+        Dim oneLine = TextFormatFlags.Left Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine
+        Dim titleW = Math.Max(0, badge.Left - left - CInt(10 * s))
+        TextRenderer.DrawText(g, DisplayTitle, Theme.BodyBoldFont, New Rectangle(left, top, titleW, titleH), Theme.TextDark, oneLine)
+        Dim detailW = Math.Max(0, Width - left - ChevronWidth - CInt(6 * s))
+        Dim detail = DisplayDetail
+        ' Narrow window: the short detail instead of a cut one
+        ' (measured with the same padding it is drawn with, but without the ellipsis, so "fits" really means not cut)
+        If Items.Count = 1 AndAlso Item.ShortDetail <> "" AndAlso
+           TextRenderer.MeasureText(g, detail, Theme.SmallFont, Size.Empty, TextFormatFlags.SingleLine Or TextFormatFlags.NoPrefix).Width > detailW Then
             detail = Item.ShortDetail
         End If
-        TextRenderer.DrawText(g, detail, Theme.SmallFont, New Rectangle(left + statusW, y2, detailW, detailH),
-                              If(Item.IsUrgent, Theme.StatusRed, Theme.TextMuted),
-                              TextFormatFlags.Left Or TextFormatFlags.NoPadding Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine)
+        TextRenderer.DrawText(g, detail, Theme.SmallFont, New Rectangle(left, top + titleH + CInt(4 * s), detailW, detailH),
+                              Theme.TextMuted, oneLine)
 
         ' Divider
         Using pen As New Pen(Theme.Divider)

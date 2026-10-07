@@ -641,83 +641,19 @@ Public Class HealthCertificateView
 
     ' ---------- Row builders ----------
 
-    ''' <summary>A list row: bold title, muted detail, optional status badge and optional link.</summary>
+    ''' <summary>A list row with one optional link (uses the shared DetailRows.ListRow, so spacing matches every module).</summary>
     Private Function ListRow(title As String, detail As String, status As String, linkText As String, action As Action) As Control
-        Dim row As New Panel With {.Height = 52, .BackColor = Color.White}
-        AddHandler row.Paint,
-            Sub(s, e)
-                Using pen As New Pen(Theme.Divider)
-                    e.Graphics.DrawLine(pen, 0, row.Height - 1, row.Width, row.Height - 1)
-                End Using
-            End Sub
-
-        Dim right As New FlowLayoutPanel With {
-            .Dock = DockStyle.Right, .AutoSize = True, .WrapContents = False,
-            .FlowDirection = FlowDirection.RightToLeft, .BackColor = Color.White, .Padding = New Padding(0, 13, 0, 0)
-        }
-        If linkText IsNot Nothing AndAlso action IsNot Nothing Then
-            Dim link As New LinkLabel With {
-                .Text = linkText, .AutoSize = True, .Font = Theme.SmallBoldFont, .LinkColor = Theme.SidebarBlue,
-                .ActiveLinkColor = Theme.SidebarActive, .LinkBehavior = LinkBehavior.HoverUnderline,
-                .Margin = New Padding(10, 4, 0, 0), .BackColor = Color.White
-            }
-            ' Deferred: the action rebuilds this list, which disposes the link that was clicked
-            AddHandler link.LinkClicked, Sub() BeginInvoke(action)
-            right.Controls.Add(link)
-        End If
-        If status <> "" Then right.Controls.Add(New StatusBadge With {.Text = status, .Height = 24, .Margin = New Padding(8, 1, 4, 0)})
-
-        Dim left As New Panel With {.Dock = DockStyle.Fill, .BackColor = Color.White}
-        Dim lblTitle As New Label With {
-            .Text = title, .Font = Theme.BodyBoldFont, .ForeColor = Theme.TextDark,
-            .Dock = DockStyle.Top, .Height = 26, .AutoEllipsis = True, .TextAlign = ContentAlignment.BottomLeft
-        }
-        Dim lblDetail As New Label With {
-            .Text = detail, .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted,
-            .Dock = DockStyle.Top, .Height = 20, .AutoEllipsis = True
-        }
-        tips.SetToolTip(lblTitle, title)
-        tips.SetToolTip(lblDetail, detail)
-        left.Controls.Add(lblDetail)
-        left.Controls.Add(lblTitle)
-
-        row.Controls.Add(left)
-        row.Controls.Add(right)
-        Return row
+        Dim links = If(linkText IsNot Nothing AndAlso action IsNot Nothing,
+                       New List(Of RowLink) From {New RowLink(linkText, Theme.SidebarBlue, action)}, Nothing)
+        Return DetailRows.ListRow(tips, title, detail, status, links)
     End Function
 
-    ''' <summary>A colored one-line note (ellipsized, full text in the tooltip).</summary>
     Private Function NoteRow(text As String, color As Color) As Control
-        Dim note As New Label With {
-            .Height = 44, .Font = Theme.SmallBoldFont, .ForeColor = color, .BackColor = Color.White,
-            .TextAlign = ContentAlignment.MiddleLeft, .AutoEllipsis = True, .Text = text
-        }
-        tips.SetToolTip(note, text)
-        Return note
+        Return DetailRows.NoteRow(tips, text, color)
     End Function
 
-    ''' <summary>A row with two caption/value pairs side by side.</summary>
     Private Function InfoRow(caption1 As String, value1 As String, caption2 As String, value2 As String) As Control
-        Dim row As New TableLayoutPanel With {.Height = 48, .ColumnCount = 2, .RowCount = 1, .BackColor = Color.White,
-                                              .Margin = New Padding(0), .Padding = New Padding(0)}
-        row.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, 50))
-        row.ColumnStyles.Add(New ColumnStyle(SizeType.Percent, 50))
-        row.RowStyles.Add(New RowStyle(SizeType.Percent, 100))
-        row.Controls.Add(InfoPair(caption1, value1), 0, 0)
-        row.Controls.Add(InfoPair(caption2, value2), 1, 0)
-        Return row
-    End Function
-
-    Private Function InfoPair(caption As String, value As String) As Control
-        Dim pair As New Panel With {.Dock = DockStyle.Fill, .BackColor = Color.White, .Margin = New Padding(0)}
-        Dim cap As New Label With {.Text = caption, .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted,
-                                   .Dock = DockStyle.Top, .Height = 20, .AutoEllipsis = True}
-        Dim val As New Label With {.Text = value, .Font = Theme.BodyBoldFont, .ForeColor = Theme.TextDark,
-                                   .Dock = DockStyle.Top, .Height = 22, .AutoEllipsis = True}
-        tips.SetToolTip(val, value)
-        pair.Controls.Add(val)
-        pair.Controls.Add(cap)
-        Return pair
+        Return DetailRows.InfoRow(tips, caption1, value1, caption2, value2)
     End Function
 
     ' =====================================================================

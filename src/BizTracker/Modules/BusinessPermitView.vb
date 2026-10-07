@@ -557,33 +557,17 @@ Public Class BusinessPermitView
     End Function
 
     Private Function CreateEndorsementRow(en As ClearanceEndorsement, isFinal As Boolean) As Control
-        Dim row As New Panel With {.Height = 50, .BackColor = Color.White}
-        AddHandler row.Paint,
-            Sub(s, e)
-                Using pen As New Pen(Theme.Divider)
-                    e.Graphics.DrawLine(pen, 0, row.Height - 1, row.Width, row.Height - 1)
-                End Using
-            End Sub
-
-        Dim right As New FlowLayoutPanel With {
-            .Dock = DockStyle.Right, .AutoSize = True, .WrapContents = False,
-            .FlowDirection = FlowDirection.RightToLeft, .BackColor = Color.White, .Padding = New Padding(0, 12, 0, 0)
-        }
-        If canManage AndAlso Not isFinal Then
+        Dim links As New List(Of RowLink)
+        Dim manage = canManage AndAlso Not isFinal
+        If manage Then
             If en.Status = "Pending" Then
-                right.Controls.Add(MakeLink("Reject", Theme.StatusRed, Sub() RejectEndorsement(en)))
-                right.Controls.Add(MakeLink("Endorse", Theme.SidebarBlue, Sub() SetEndorsement(en, "Endorsed", "")))
+                links.Add(New RowLink("Endorse", Theme.SidebarBlue, Sub() SetEndorsement(en, "Endorsed", "")))
+                links.Add(New RowLink("Reject", Theme.StatusRed, Sub() RejectEndorsement(en)))
             Else
-                right.Controls.Add(MakeLink("Reset", Theme.TextMuted, Sub() SetEndorsement(en, "Pending", "")))
+                links.Add(New RowLink("Reset", Theme.TextMuted, Sub() SetEndorsement(en, "Pending", "")))
             End If
         End If
-        right.Controls.Add(New StatusBadge With {.Text = en.Status, .Height = 24, .Margin = New Padding(8, 1, 4, 0)})
 
-        Dim left As New Panel With {.Dock = DockStyle.Fill, .BackColor = Color.White}
-        Dim lblName As New Label With {
-            .Text = OfficeTitle(en.Office), .Font = Theme.BodyBoldFont, .ForeColor = Theme.TextDark,
-            .Dock = DockStyle.Top, .Height = 24, .AutoEllipsis = True, .TextAlign = ContentAlignment.BottomLeft
-        }
         Dim detail As String
         Select Case en.Status
             Case "Endorsed"
@@ -593,27 +577,10 @@ Public Class BusinessPermitView
             Case Else
                 detail = If(en.Remarks <> "", en.Remarks, "Waiting for the " & en.Office & " office")
         End Select
-        Dim lblDetail As New Label With {
-            .Text = detail, .Font = Theme.SmallFont, .Dock = DockStyle.Top, .Height = 20, .AutoEllipsis = True,
-            .ForeColor = If(en.Status = "Rejected", Theme.StatusRed, Theme.TextMuted)
-        }
-        tips.SetToolTip(lblDetail, detail)
-        left.Controls.Add(lblDetail)
-        left.Controls.Add(lblName)
-
-        row.Controls.Add(left)
-        row.Controls.Add(right)
-        Return row
-    End Function
-
-    Private Function MakeLink(text As String, color As Color, action As Action) As LinkLabel
-        Dim link As New LinkLabel With {
-            .Text = text, .AutoSize = True, .Font = Theme.SmallBoldFont, .LinkColor = color,
-            .ActiveLinkColor = Theme.SidebarActive, .LinkBehavior = LinkBehavior.HoverUnderline,
-            .Margin = New Padding(10, 4, 0, 0), .BackColor = Color.White
-        }
-        AddHandler link.LinkClicked, Sub() action()
-        Return link
+        ' Same link column on every row so the status badges line up in one column
+        Return ListRow(tips, OfficeTitle(en.Office), detail, en.Status, links,
+                       If(en.Status = "Rejected", Theme.StatusRed, Nothing),
+                       If(manage, LinkColumnWidth("Endorse", "Reject"), 0))
     End Function
 
     Private Sub SetEndorsement(en As ClearanceEndorsement, status As String, remarks As String)

@@ -24,8 +24,11 @@ Public Class ModernMessageBox
     Private targetTop As Integer
     Private animStep As Integer
 
+    ''' <param name="items">Optional list (headline, detail) shown between the title and the message,
+    ''' one block per item, so long lists stay easy to read.</param>
     Private Sub New(message As String, title As String, messageKind As MessageKind,
-                    okText As String, cancelText As String, dangerOk As Boolean)
+                    okText As String, cancelText As String, dangerOk As Boolean,
+                    Optional items As IList(Of KeyValuePair(Of String, String)) = Nothing)
         kind = messageKind
         AutoScaleMode = AutoScaleMode.None      ' sizes below are already scaled by s
         FormBorderStyle = FormBorderStyle.None
@@ -40,7 +43,8 @@ Public Class ModernMessageBox
         Dim pad = CInt(24 * s)
         Dim iconSize = CInt(48 * s)
         Dim textLeft = pad + iconSize + CInt(16 * s)
-        Dim width = CInt(460 * s)
+        Dim hasItems = items IsNot Nothing AndAlso items.Count > 0
+        Dim width = CInt(If(hasItems, 520, 460) * s)
         Dim textWidth = width - textLeft - pad
 
         ' Colored icon circle
@@ -58,6 +62,8 @@ Public Class ModernMessageBox
             .AutoEllipsis = True, .BackColor = Color.White
         }
         lblTitle.SetBounds(textLeft, pad, textWidth, CInt(26 * s))
+        Dim nextTop = lblTitle.Bottom + CInt(6 * s)
+        If hasItems Then nextTop = AddItemBlocks(items, textLeft, lblTitle.Bottom + CInt(14 * s), textWidth, s) + CInt(10 * s)
         Dim msgSize = TextRenderer.MeasureText(message, Theme.BodyFont, New Size(textWidth, Integer.MaxValue),
                                                TextFormatFlags.WordBreak Or TextFormatFlags.NoPrefix)
         Dim msgHeight = Math.Min(msgSize.Height + CInt(4 * s), CInt(320 * s))
@@ -65,7 +71,7 @@ Public Class ModernMessageBox
             .Text = message, .Font = Theme.BodyFont, .ForeColor = Theme.TextMuted, .AutoSize = False,
             .AutoEllipsis = True, .UseMnemonic = False, .BackColor = Color.White
         }
-        lblMessage.SetBounds(textLeft, lblTitle.Bottom + CInt(6 * s), textWidth, msgHeight)
+        lblMessage.SetBounds(textLeft, nextTop, textWidth, msgHeight)
 
         ' Buttons (right-aligned)
         Dim buttonsTop = Math.Max(icon.Bottom, lblMessage.Bottom) + CInt(22 * s)
@@ -99,7 +105,65 @@ Public Class ModernMessageBox
         AddHandler animTimer.Tick, AddressOf Animate
     End Sub
 
+    ''' <summary>
+    ''' The item list: a soft rounded box with one block per item, a divider between blocks:
+    '''   •  Headline (bold, wraps)
+    '''      detail (small, muted, wraps)
+    ''' Returns the bottom of the box.
+    ''' </summary>
+    Private Function AddItemBlocks(items As IList(Of KeyValuePair(Of String, String)),
+                                   left As Integer, top As Integer, width As Integer, s As Single) As Integer
+        Dim box As New RoundedPanel With {.Radius = CInt(10 * s), .ShowShadow = False, .BackColor = Theme.SoftBackground}
+        Dim padX = CInt(14 * s), padY = CInt(10 * s), dotW = CInt(16 * s)
+        Dim innerW = width - 2 * padX - dotW
+        Dim flags = TextFormatFlags.WordBreak Or TextFormatFlags.NoPrefix
+        Dim y = padY
+        For i = 0 To items.Count - 1
+            If i > 0 Then
+                box.Controls.Add(New Panel With {.BackColor = Theme.Divider, .Bounds = New Rectangle(padX, y, width - 2 * padX, 1)})
+                y += CInt(10 * s)
+            End If
+            Dim headH = TextRenderer.MeasureText(items(i).Key, Theme.BodyBoldFont, New Size(innerW, Integer.MaxValue), flags).Height
+            Dim dot As New Label With {.Text = ChrW(&H25CF), .Font = Theme.SmallFont, .ForeColor = If(kind = MessageKind.Warning OrElse kind = MessageKind.Error, Theme.StatusRed, Theme.SidebarBlue),
+                                       .BackColor = Theme.SoftBackground, .AutoSize = False,
+                                       .Bounds = New Rectangle(padX, y + CInt(2 * s), dotW, CInt(16 * s))}
+            Dim head As New Label With {.Text = items(i).Key, .Font = Theme.BodyBoldFont, .ForeColor = Theme.TextDark,
+                                        .BackColor = Theme.SoftBackground, .AutoSize = False, .UseMnemonic = False,
+                                        .Bounds = New Rectangle(padX + dotW, y, innerW, headH)}
+            y += headH + CInt(3 * s)
+            box.Controls.AddRange({dot, head})
+            If items(i).Value <> "" Then
+                Dim detH = TextRenderer.MeasureText(items(i).Value, Theme.SmallFont, New Size(innerW, Integer.MaxValue), flags).Height
+                box.Controls.Add(New Label With {.Text = items(i).Value, .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted,
+                                                 .BackColor = Theme.SoftBackground, .AutoSize = False, .UseMnemonic = False,
+                                                 .Bounds = New Rectangle(padX + dotW, y, innerW, detH)})
+                y += detH
+            End If
+            y += CInt(10 * s)
+        Next
+        box.SetBounds(left, top, width, y)
+        For Each c As Control In box.Controls
+            AddHandler c.MouseDown, AddressOf DragWindow
+        Next
+        AddHandler box.MouseDown, AddressOf DragWindow
+        Controls.Add(box)
+        Return box.Bottom
+    End Function
+
     ' ==================== Public API ====================
+
+    ''' <summary>
+    ''' Yes/No question with a readable list of items above the message (e.g. the urgent alerts after login).
+    ''' Returns True if the main button was clicked.
+    ''' </summary>
+    Public Shared Function AskWithList(items As IList(Of KeyValuePair(Of String, String)), message As String, title As String,
+                                       Optional yesText As String = "Yes", Optional noText As String = "No",
+                                       Optional warning As Boolean = False) As Boolean
+        Using box As New ModernMessageBox(message, title, If(warning, MessageKind.Warning, MessageKind.Question),
+                                          yesText, noText, False, items)
+            Return box.ShowCentered() = DialogResult.OK
+        End Using
+    End Function
 
     ''' <summary>Shows a message with an OK button.</summary>
     Public Shared Sub Inform(message As String, title As String, kind As MessageKind, Optional okText As String = "OK")

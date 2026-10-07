@@ -205,9 +205,21 @@ Public Class DashboardView
         For Each grp In groups
             ' Staff see every business: a heading per business
             If Not Session.IsOwner Then rows.Add(HeadingRow(grp.First().BusinessName & "  ·  " & grp.Count()))
+            ' Pending endorsements of one application share one row instead of five look-alike rows
+            Dim rowGroups As New List(Of List(Of ActionItem))
             For Each item In grp
-                Dim row As New ActionRow(item, AccessService.CanAccess(item.Screen))
-                tips.SetToolTip(row, item.Title & vbCrLf & row.DetailLine & If(row.CanOpen, vbCrLf & "Click to open " & ModuleTitles(item.Screen), ""))
+                Dim last = rowGroups.LastOrDefault()
+                If last IsNot Nothing AndAlso IsEndorsement(item) AndAlso IsEndorsement(last(0)) AndAlso
+                   last(0).RelatedId = item.RelatedId AndAlso last(0).Status = item.Status Then
+                    last.Add(item)
+                Else
+                    rowGroups.Add(New List(Of ActionItem) From {item})
+                End If
+            Next
+            For Each rowItems In rowGroups
+                Dim item = rowItems(0)
+                Dim row As New ActionRow(rowItems, AccessService.CanAccess(item.Screen))
+                tips.SetToolTip(row, row.DisplayTitle & vbCrLf & row.DetailLine & If(row.CanOpen, vbCrLf & "Click to open " & ModuleTitles(item.Screen), ""))
                 ' Deferred: opening a module disposes this list (and the clicked row)
                 AddHandler row.OpenRequested, Sub(s, ev)
                                                   Dim r = DirectCast(s, ActionRow)
@@ -229,6 +241,11 @@ Public Class DashboardView
             lblEmpty.BringToFront()
         End If
     End Sub
+
+    ''' <summary>True for a "... endorsement" item of a business permit application.</summary>
+    Private Shared Function IsEndorsement(x As ActionItem) As Boolean
+        Return x.Screen = AppScreen.BusinessPermits AndAlso x.Title.EndsWith(" endorsement")
+    End Function
 
     ''' <summary>Asks MainForm to open a module (on the given business when one is known).</summary>
     Private Sub OpenModule(screen As AppScreen, businessId As Integer?)

@@ -85,51 +85,22 @@ Public Class RequirementsPanel
 
     ''' <summary>One checklist row: name + detail on the left, status badge and actions on the right.</summary>
     Private Function CreateRow(r As Requirement) As Control
-        Dim row As New Panel With {.Height = Dpi(52), .BackColor = Color.White}
-        AddHandler row.Paint,
-            Sub(s, e)
-                Using pen As New Pen(Theme.Divider)
-                    e.Graphics.DrawLine(pen, 0, row.Height - 1, row.Width, row.Height - 1)
-                End Using
-            End Sub
-
-        ' Right side: actions + badge (laid out right-to-left)
-        Dim right As New FlowLayoutPanel With {
-            .Dock = DockStyle.Right, .AutoSize = True, .WrapContents = False,
-            .FlowDirection = FlowDirection.RightToLeft, .BackColor = Color.White, .Padding = New Padding(0, Dpi(12), 0, 0)
-        }
-        If canVerify AndAlso r.Status = "Submitted" Then
-            right.Controls.Add(MakeLink("Reject", Sub() RejectDoc(r)))
-            right.Controls.Add(MakeLink("Verify", Sub() VerifyDoc(r)))
-        End If
+        ' Actions, left to right: View, Upload/Replace, Verify, Reject
+        Dim links As New List(Of RowLink)
+        If Not String.IsNullOrEmpty(r.FilePath) Then links.Add(New RowLink("View", Theme.SidebarBlue, Sub() ViewDoc(r)))
         ' A reviewer deciding a submitted file gets Verify / Reject instead of Replace (keeps the row readable)
         Dim reviewing = canVerify AndAlso r.Status = "Submitted"
         If canUpload AndAlso r.Status <> "Verified" AndAlso Not reviewing Then
-            right.Controls.Add(MakeLink(If(String.IsNullOrEmpty(r.FilePath), "Upload", "Replace"), Sub() UploadDoc(r)))
+            links.Add(New RowLink(If(String.IsNullOrEmpty(r.FilePath), "Upload", "Replace"), Theme.SidebarBlue, Sub() UploadDoc(r)))
         End If
-        If Not String.IsNullOrEmpty(r.FilePath) Then
-            right.Controls.Add(MakeLink("View", Sub() ViewDoc(r)))
+        If reviewing Then
+            links.Add(New RowLink("Verify", Theme.SidebarBlue, Sub() VerifyDoc(r)))
+            links.Add(New RowLink("Reject", Theme.StatusRed, Sub() RejectDoc(r)))
         End If
-        right.Controls.Add(New StatusBadge With {.Text = r.Status, .Height = Dpi(24), .Margin = New Padding(Dpi(8), Dpi(1), Dpi(4), 0)})
-
-        ' Left side: document name + one line of detail
-        Dim left As New Panel With {.Dock = DockStyle.Fill, .BackColor = Color.White}
-        Dim lblName As New Label With {
-            .Text = r.DocumentName, .Font = Theme.BodyBoldFont, .ForeColor = Theme.TextDark,
-            .Dock = DockStyle.Top, .Height = Dpi(26), .AutoEllipsis = True, .TextAlign = ContentAlignment.BottomLeft
-        }
-        Dim lblDetail As New Label With {
-            .Text = DetailText(r), .Font = Theme.SmallFont, .AutoEllipsis = True, .Dock = DockStyle.Top, .Height = Dpi(20),
-            .ForeColor = If(r.Status = "Rejected", Theme.StatusRed, Theme.TextMuted)
-        }
-        tips.SetToolTip(lblName, r.DocumentName)
-        tips.SetToolTip(lblDetail, lblDetail.Text)
-        left.Controls.Add(lblDetail)
-        left.Controls.Add(lblName)
-
-        row.Controls.Add(left)
-        row.Controls.Add(right)
-        Return row
+        ' Same link column on every row so the status badges line up
+        Dim column = If(canVerify, LinkColumnWidth("View", "Verify", "Reject"), If(canUpload, LinkColumnWidth("View", "Replace"), LinkColumnWidth("View")))
+        Return ListRow(tips, r.DocumentName, DetailText(r), r.Status, links,
+                       If(r.Status = "Rejected", Theme.StatusRed, Nothing), column)
     End Function
 
     Private Shared Function DetailText(r As Requirement) As String
@@ -143,17 +114,6 @@ Public Class RequirementsPanel
             Case Else
                 Return "Not uploaded yet"
         End Select
-    End Function
-
-    Private Function MakeLink(text As String, action As Action) As LinkLabel
-        Dim link As New LinkLabel With {
-            .Text = text, .AutoSize = True, .Font = Theme.SmallBoldFont, .LinkColor = Theme.SidebarBlue,
-            .ActiveLinkColor = Theme.SidebarActive, .LinkBehavior = LinkBehavior.HoverUnderline,
-            .Margin = New Padding(Dpi(10), Dpi(4), 0, 0), .BackColor = Color.White
-        }
-        If text = "Reject" Then link.LinkColor = Theme.StatusRed
-        AddHandler link.LinkClicked, Sub() action()
-        Return link
     End Function
 
     ' ---------------- actions ----------------

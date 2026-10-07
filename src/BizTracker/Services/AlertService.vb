@@ -197,6 +197,51 @@ Public NotInheritable Class AlertService
         Return String.Join(vbCrLf, lines) & vbCrLf & vbCrLf & "Open the notifications to see every alert and go to the module that handles it."
     End Function
 
+    ''' <summary>
+    ''' The urgent alerts as separate items for the pop-up after login (at most maxLines):
+    '''   Headline : "Real property tax Q2 2026 is overdue"
+    '''   Detail   : "PIN 015-06-014-02-007 · Kusina ni Aling Rosa · 99 days ago"
+    ''' </summary>
+    Public Shared Function GetUrgentItems(Optional maxLines As Integer = 5) As List(Of KeyValuePair(Of String, String))
+        Return GetUrgentUnread().Take(maxLines).Select(
+            Function(n) New KeyValuePair(Of String, String)(
+                Headline(n), DetailText(n, withModule:=False) & " · " & DashboardService.ShortDaysText(StatusService.DaysUntil(n.DueDate)))).ToList()
+    End Function
+
+    ''' <summary>The message without its "(reference)" ending: "Noel Ramos: health certificate expired".</summary>
+    Public Shared Function Headline(n As Notification) As String
+        Dim msg = If(n.Message, "")
+        Dim i = msg.LastIndexOf(" (", StringComparison.Ordinal)
+        Return If(msg.EndsWith(")") AndAlso i > 0, msg.Substring(0, i), msg)
+    End Function
+
+    ''' <summary>The "(reference)" at the end of the message without brackets: "HC-2025-00040" (empty if none).</summary>
+    Public Shared Function Reference(n As Notification) As String
+        Dim msg = If(n.Message, "")
+        Dim i = msg.LastIndexOf(" (", StringComparison.Ordinal)
+        Return If(msg.EndsWith(")") AndAlso i > 0, msg.Substring(i + 2, msg.Length - i - 3), "")
+    End Function
+
+    ''' <summary>
+    ''' Second line under the headline: reference, then business (staff) or module (owner).
+    ''' "PIN 015-06-014-02-007 · Kusina ni Aling Rosa"
+    ''' withModule adds the module for staff too: "HC-2025-00040 · Kusina ni Aling Rosa · Health Certificate".
+    ''' </summary>
+    Public Shared Function DetailText(n As Notification, Optional withModule As Boolean = True) As String
+        Dim parts As New List(Of String)
+        Dim ref = Reference(n)
+        If ref <> "" Then parts.Add(ref)
+        If Not Session.IsOwner AndAlso n.BusinessName <> "" Then parts.Add(n.BusinessName)
+        If withModule OrElse Session.IsOwner Then parts.Add(n.ModuleName)
+        Return String.Join(" · ", parts)
+    End Function
+
+    ''' <summary>Last line of the pop-up after login (also used when there are more alerts than shown).</summary>
+    Public Shared Function GetUrgentFooter(Optional maxLines As Integer = 5) As String
+        Dim more = GetUrgentUnread().Count - maxLines
+        Return If(more > 0, "…and " & more & " more. ", "") & "Open the notifications to see every alert and go to the module that handles it."
+    End Function
+
     ''' <summary>"N urgent alerts need attention"</summary>
     Public Shared Function GetUrgentTitle(count As Integer) As String
         Return count & If(count = 1, " urgent alert needs", " urgent alerts need") & " attention"

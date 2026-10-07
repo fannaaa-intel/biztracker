@@ -18,6 +18,8 @@ Public Class LoginForm
     Private ReadOnly errorBox As New RoundedPanel()
     Private ReadOnly lblError As New Label()
     Private ReadOnly lockTimer As New Timer With {.Interval = 1000}
+    Private ReadOnly brandTips As New ToolTip()
+    Private hoverService As Integer = -1      ' service card under the mouse (-1 = none)
 
     ' Read from the settings table when the form loads
     Private lguName As String = ""
@@ -55,6 +57,15 @@ Public Class LoginForm
         AddHandler brandPanel.Paint, AddressOf BrandPanel_Paint
         AddHandler brandPanel.Resize, Sub() brandPanel.Invalidate()
         AddHandler brandPanel.MouseDown, AddressOf DragWindow
+        AddHandler brandPanel.MouseMove, AddressOf BrandPanel_MouseMove
+        AddHandler brandPanel.MouseLeave, Sub()
+                                              hoverService = -1
+                                              brandTips.SetToolTip(brandPanel, "")
+                                              brandPanel.Invalidate()
+                                          End Sub
+        ' Double-buffered so the hover highlight does not flicker
+        GetType(Control).GetProperty("DoubleBuffered", Reflection.BindingFlags.Instance Or Reflection.BindingFlags.NonPublic).
+            SetValue(brandPanel, True)
     End Sub
 
     Private Sub BuildFormPanel()
@@ -165,33 +176,93 @@ Public Class LoginForm
         ' Logo badge
         Dim x = CInt(48 * s)
         Using badge As New SolidBrush(Color.White)
-            g.FillEllipse(badge, x, 64 * s, 56 * s, 56 * s)
+            g.FillEllipse(badge, x, 48 * s, 56 * s, 56 * s)
         End Using
         TextRenderer.DrawText(g, Icons.Document, Theme.IconFont(18.0F),
-                              New Rectangle(x, CInt(64 * s), CInt(56 * s), CInt(56 * s)), Theme.SidebarBlue,
+                              New Rectangle(x, CInt(48 * s), CInt(56 * s), CInt(56 * s)), Theme.SidebarBlue,
                               TextFormatFlags.HorizontalCenter Or TextFormatFlags.VerticalCenter Or TextFormatFlags.NoPadding)
 
-        TextRenderer.DrawText(g, "BizTracker", Theme.DisplayFont, New Point(x - 4, CInt(140 * s)), Color.White)
+        TextRenderer.DrawText(g, "BizTracker", Theme.DisplayFont, New Point(x - 4, CInt(118 * s)), Color.White)
         TextRenderer.DrawText(g, "Business Permit and Regulatory" & vbCrLf & "Compliance System",
-                              Theme.SubtitleFont, New Rectangle(x, CInt(188 * s), w - 2 * x, CInt(60 * s)),
+                              Theme.SubtitleFont, New Rectangle(x, CInt(164 * s), w - 2 * x, CInt(50 * s)),
                               Theme.SidebarTextMuted, TextFormatFlags.WordBreak)
 
         If lguName <> "" Then
             TextRenderer.DrawText(g, lguName & If(province <> "", ", " & province, ""), Theme.BodyFont,
-                                  New Point(x, CInt(258 * s)), Color.White, TextFormatFlags.NoPrefix)   ' show "&" as typed
+                                  New Point(x, CInt(222 * s)), Color.White, TextFormatFlags.NoPrefix)   ' show "&" as typed
         End If
 
-        ' The six services, as a checklist
-        Dim services = {"Business Permit", "Sanitary Permit", "Real Property Tax",
-                        "Health Certificates", "Annual Inspection", "Construction Permit"}
-        Dim y = CInt(h - 250 * s)
-        For Each service In services
-            TextRenderer.DrawText(g, Icons.CheckMark, Theme.IconFont(9.0F), New Point(x, y + CInt(3 * s)), Theme.SidebarTextMuted)
-            TextRenderer.DrawText(g, service, Theme.BodyFont, New Point(x + CInt(24 * s), y), Color.White)
-            y += CInt(28 * s)
+        ' The six services: one card each (icon, name, office); the card under the mouse lights up
+        TextRenderer.DrawText(g, "SIX SERVICES IN ONE SYSTEM", Theme.SmallBoldFont,
+                              New Point(x, ServiceRect(0).Top - CInt(24 * s)), Theme.SidebarTextMuted)
+        Dim oneLine = TextFormatFlags.VerticalCenter Or TextFormatFlags.SingleLine Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix
+        For i = 0 To Services.Length - 1
+            Dim r = ServiceRect(i)
+            Using path = UiHelper.RoundedRect(r, CInt(8 * s)),
+                  fill As New SolidBrush(Color.FromArgb(If(i = hoverService, 52, 22), 255, 255, 255))
+                g.FillPath(fill, path)
+            End Using
+            Dim iconBox As New Rectangle(r.X + CInt(8 * s), r.Y + (r.Height - CInt(24 * s)) \ 2, CInt(24 * s), CInt(24 * s))
+            Using circle As New SolidBrush(Color.FromArgb(If(i = hoverService, 255, 230), 255, 255, 255))
+                g.FillEllipse(circle, iconBox)
+            End Using
+            TextRenderer.DrawText(g, Services(i).Glyph, Theme.IconFont(9.0F), iconBox, Theme.SidebarBlue,
+                                  TextFormatFlags.HorizontalCenter Or TextFormatFlags.VerticalCenter Or TextFormatFlags.NoPadding)
+            ' Name on the left, office on the right (muted), with room between them
+            Dim textLeft = iconBox.Right + CInt(10 * s)
+            Dim officeW = TextRenderer.MeasureText(Services(i).Office, Theme.SmallFont).Width
+            Dim officeRect As New Rectangle(r.Right - CInt(10 * s) - officeW, r.Y, officeW, r.Height)
+            TextRenderer.DrawText(g, Services(i).Name, Theme.BodyBoldFont,
+                                  New Rectangle(textLeft, r.Y, officeRect.Left - textLeft - CInt(8 * s), r.Height), Color.White, oneLine)
+            TextRenderer.DrawText(g, Services(i).Office, Theme.SmallFont, officeRect, Theme.SidebarTextMuted, oneLine Or TextFormatFlags.Right)
         Next
         TextRenderer.DrawText(g, "RA 7160  ·  RA 11032 (Ease of Doing Business)", Theme.SmallFont,
-                              New Point(x, CInt(h - 48 * s)), Theme.SidebarTextMuted)
+                              New Point(x, CInt(h - 40 * s)), Theme.SidebarTextMuted)
+    End Sub
+
+    ' ==================== Service cards ====================
+
+    Private Structure ServiceInfo
+        Public Name As String
+        Public Office As String
+        Public Glyph As String
+        Public Tip As String
+    End Structure
+
+    ''' <summary>The six services (same icons as the sidebar).</summary>
+    Private Shared ReadOnly Services As ServiceInfo() = {
+        New ServiceInfo With {.Name = "Business Permit", .Office = "BPLO", .Glyph = Icons.Document,
+                              .Tip = "New and renewal Mayor's permits, with clearances from five offices"},
+        New ServiceInfo With {.Name = "Sanitary Permit", .Office = "Health Office", .Glyph = Icons.CheckShield,
+                              .Tip = "Yearly sanitary permit with inspection score (valid until Dec 31)"},
+        New ServiceInfo With {.Name = "Real Property Tax", .Office = "Assessor", .Glyph = Icons.Bank,
+                              .Tip = "Assessments and quarterly payments of land, buildings and machinery"},
+        New ServiceInfo With {.Name = "Health Certificates", .Office = "Health Office", .Glyph = Icons.Health,
+                              .Tip = "Food handler and non-food staff certificates (valid 1 year)"},
+        New ServiceInfo With {.Name = "Annual Inspection", .Office = "Joint Team", .Glyph = Icons.Search,
+                              .Tip = "Structural, electrical, mechanical and fire inspection"},
+        New ServiceInfo With {.Name = "Construction Permit", .Office = "OBO · MPDO", .Glyph = Icons.Repair,
+                              .Tip = "Locational clearance, building permit and occupancy"}
+    }
+
+    ''' <summary>Where service card i is drawn (one column, below the branding).</summary>
+    Private Function ServiceRect(i As Integer) As Rectangle
+        Dim s = DeviceDpi / 96.0F
+        Dim x = CInt(48 * s)
+        Dim rowH = CInt(34 * s), gap = CInt(6 * s)
+        Dim top = CInt(300 * s)
+        Return New Rectangle(x, top + i * (rowH + gap), brandPanel.ClientSize.Width - 2 * x, rowH)
+    End Function
+
+    Private Sub BrandPanel_MouseMove(sender As Object, e As MouseEventArgs)
+        Dim found = -1
+        For i = 0 To Services.Length - 1
+            If ServiceRect(i).Contains(e.Location) Then found = i : Exit For
+        Next
+        If found = hoverService Then Return
+        hoverService = found
+        brandTips.SetToolTip(brandPanel, If(found >= 0, Services(found).Tip, ""))
+        brandPanel.Invalidate()
     End Sub
 
     ' ==================== Behaviour ====================
@@ -315,7 +386,7 @@ Public Class LoginForm
     End Sub
 
     Protected Overrides Sub Dispose(disposing As Boolean)
-        If disposing Then lockTimer.Dispose()
+        If disposing Then lockTimer.Dispose() : brandTips.Dispose()
         MyBase.Dispose(disposing)
     End Sub
 

@@ -594,10 +594,10 @@ Public Class RealPropertyTaxView
                 If q.IsOverdue Then detailColor = Theme.StatusRed
                 If canManage AndAlso nextQ IsNot Nothing AndAlso nextQ.Quarter = q.Quarter AndAlso
                    RptService.GetPaymentBlocker(selected, q.Quarter) Is Nothing Then
-                    links.Add(New RowLink("Record Payment", Theme.SidebarBlue, Sub() Pay_Click(Nothing, EventArgs.Empty)))
+                    links.Add(New RowLink("Record Payment", Theme.SidebarBlue, Sub() Pay_Click(Nothing, EventArgs.Empty), "Pay"))
                 End If
             End If
-            rows.Add(ListRow(tips, title, detail, q.Status, links, detailColor))
+            rows.Add(ListRow(tips, title, detail, q.Status, links, detailColor, If(canManage, LinkColumnWidth("Record Payment"), 0)))
         Next
         Dim overdue = selected.Quarters.Where(Function(q) q.IsOverdue).ToList()
         If overdue.Count > 0 Then

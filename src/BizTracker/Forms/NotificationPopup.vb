@@ -208,9 +208,10 @@ Public Class NotificationPopup
 End Class
 
 ''' <summary>
-''' One alert in the bell popup:
-'''   (dot) Message (bold while unread, up to 2 lines)          ✓
-'''         Business · Module · Oct 1, 2026 · 5 days ago
+''' One alert in the bell popup (three short lines instead of one crowded sentence):
+'''   (dot) Headline (bold while unread, up to 2 lines)        ✓
+'''         HC-2025-00040 · Kusina ni Aling Rosa · Health Certificate
+'''         Due Aug 27, 2026 · 41 days ago
 ''' Dot: red Urgent, amber Warning, blue Info. Click = open; ✓ (unread only) = mark read.
 ''' </summary>
 Public Class NotificationRow
@@ -231,13 +232,24 @@ Public Class NotificationRow
         Text = n.Message
         Cursor = Cursors.Hand
         Dim sc = DeviceDpi / 96.0
-        ' One or two title lines, measured for the width the row will get
+        ' One or two headline lines, measured for the width the row will get
         Dim lineH = TextRenderer.MeasureText("Ag", TitleFont).Height
-        Dim need = TextRenderer.MeasureText(n.Message, TitleFont, New Size(Math.Max(50, TextWidth(rowWidth)), Integer.MaxValue),
+        Dim need = TextRenderer.MeasureText(AlertService.Headline(n), TitleFont, New Size(Math.Max(50, TextWidth(rowWidth)), Integer.MaxValue),
                                             TextFormatFlags.WordBreak Or TextFormatFlags.NoPrefix).Height
         titleLines = If(need > lineH * 1.5, 2, 1)
-        Height = lineH * titleLines + TextRenderer.MeasureText("Ag", Theme.SmallFont).Height + CInt(22 * sc)
+        Height = BlockHeight() + CInt(26 * sc)
     End Sub
+
+    Private Function LineGap() As Integer
+        Return CInt(4 * DpiFactor)
+    End Function
+
+    ''' <summary>Height of the headline + the two small lines, with their gaps.</summary>
+    Private Function BlockHeight() As Integer
+        Dim lineH = TextRenderer.MeasureText("Ag", TitleFont).Height
+        Dim smallH = TextRenderer.MeasureText("Ag", Theme.SmallFont).Height
+        Return lineH * titleLines + 2 * (smallH + LineGap())
+    End Function
 
     Private ReadOnly Property TitleFont As Font
         Get
@@ -252,21 +264,35 @@ Public Class NotificationRow
     End Property
 
     Private Function TextLeft() As Integer
-        Return CInt(22 * DpiFactor)
+        Return CInt(24 * DpiFactor)
     End Function
 
     Private Function CheckWidth() As Integer
-        Return CInt(30 * DpiFactor)
+        Return CInt(34 * DpiFactor)
     End Function
 
     Private Function TextWidth(rowWidth As Integer) As Integer
         Return rowWidth - TextLeft() - CheckWidth() - CInt(6 * DpiFactor)
     End Function
 
-    ''' <summary>"Cristan's Bakeshop · Health Certificate · Oct 1, 2026 · 5 days ago" (no business for owners).</summary>
+    ''' <summary>"HC-2025-00040 · Kusina ni Aling Rosa · Health Certificate" (no business for owners).</summary>
+    Public ReadOnly Property SourceLine As String
+        Get
+            Return AlertService.DetailText(Notification)
+        End Get
+    End Property
+
+    ''' <summary>"Due Aug 27, 2026 · 41 days ago".</summary>
+    Public ReadOnly Property DueLine As String
+        Get
+            Return "Due " & AlertService.DueText(Notification)
+        End Get
+    End Property
+
+    ''' <summary>Both small lines (for the tooltip).</summary>
     Public ReadOnly Property DetailLine As String
         Get
-            Return If(Session.IsOwner, "", Notification.BusinessName & " · ") & Notification.ModuleName & " · " & AlertService.DueText(Notification)
+            Return SourceLine & vbCrLf & DueLine
         End Get
     End Property
 
@@ -315,27 +341,32 @@ Public Class NotificationRow
         If Notification.IsRead Then dotColor = ControlPaint.Light(dotColor, 0.9F)
 
         Dim lineH = TextRenderer.MeasureText("Ag", TitleFont).Height
-        Dim detailH = TextRenderer.MeasureText("Ag", Theme.SmallFont).Height
-        Dim top = (Height - lineH * titleLines - detailH - CInt(4 * sc)) \ 2
+        Dim smallH = TextRenderer.MeasureText("Ag", Theme.SmallFont).Height
+        Dim top = (Height - BlockHeight()) \ 2
         Dim dot = CInt(10 * sc)
         g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
         Using brush As New SolidBrush(dotColor)
-            g.FillEllipse(brush, CInt(4 * sc), top + (lineH - dot) \ 2, dot, dot)
+            g.FillEllipse(brush, CInt(6 * sc), top + (lineH - dot) \ 2, dot, dot)
         End Using
         g.SmoothingMode = Drawing2D.SmoothingMode.None
 
+        ' Headline, then where it comes from, then when it is due (each on its own line)
         Dim textW = TextWidth(Width)
-        TextRenderer.DrawText(g, Notification.Message, TitleFont, New Rectangle(TextLeft(), top, textW, lineH * titleLines),
+        Dim oneLine = TextFormatFlags.Left Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine
+        Dim urgentUnread = Notification.Priority = AlertService.Urgent AndAlso Not Notification.IsRead
+        TextRenderer.DrawText(g, AlertService.Headline(Notification), TitleFont, New Rectangle(TextLeft(), top, textW, lineH * titleLines),
                               If(Notification.IsRead, Theme.TextMuted, Theme.TextDark),
                               TextFormatFlags.Left Or TextFormatFlags.WordBreak Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix)
-        TextRenderer.DrawText(g, DetailLine, Theme.SmallFont, New Rectangle(TextLeft(), top + lineH * titleLines + CInt(4 * sc), textW, detailH),
-                              If(Notification.Priority = AlertService.Urgent AndAlso Not Notification.IsRead, Theme.StatusRed, Theme.TextMuted),
-                              TextFormatFlags.Left Or TextFormatFlags.EndEllipsis Or TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine)
+        Dim y = top + lineH * titleLines + LineGap()
+        TextRenderer.DrawText(g, SourceLine, Theme.SmallFont, New Rectangle(TextLeft(), y, textW, smallH), Theme.TextMuted, oneLine)
+        y += smallH + LineGap()
+        TextRenderer.DrawText(g, DueLine, If(urgentUnread, Theme.SmallBoldFont, Theme.SmallFont), New Rectangle(TextLeft(), y, textW, smallH),
+                              If(urgentUnread, Theme.StatusRed, If(Notification.IsRead, Theme.TextMuted, Theme.StatusAmber)), oneLine)
 
         ' ✓ (mark read) for unread rows
         If Not Notification.IsRead Then
             Dim r = CheckRect()
-            Dim circle As New Rectangle(r.X + (r.Width - CInt(26 * sc)) \ 2, (Height - CInt(26 * sc)) \ 2, CInt(26 * sc), CInt(26 * sc))
+            Dim circle As New Rectangle(r.X + (r.Width - CInt(28 * sc)) \ 2, (Height - CInt(28 * sc)) \ 2, CInt(28 * sc), CInt(28 * sc))
             If _hoverCheck Then
                 g.SmoothingMode = Drawing2D.SmoothingMode.AntiAlias
                 Using brush As New SolidBrush(Theme.AccentSoft)

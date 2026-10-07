@@ -447,7 +447,8 @@ Public Class ConstructionPermitView
                     links.Add(New RowLink("Reject", Theme.StatusRed, Sub() RejectClearance(clearanceType)))
                 End If
             End If
-            rows.Add(ListRow(tips, ConstructionService.GetClearanceTitle(clearanceType), detail, c.Status, links, detailColor))
+            rows.Add(ListRow(tips, ConstructionService.GetClearanceTitle(clearanceType), detail, c.Status, links, detailColor,
+                             If(canManage, LinkColumnWidth("Approve", "Reject"), 0)))
         Next
         Dim nextNote = ConstructionService.GetAdvanceBlocker(selected)
         If selected.Status = ConstructionService.Completed Then
