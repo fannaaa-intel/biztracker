@@ -62,6 +62,8 @@ Public Class MainForm
     ''' <summary>True when opened right after signing in: alerts are generated and urgent ones are summarized.</summary>
     Private ReadOnly afterLogin As Boolean
     Private popup As NotificationPopup
+    ''' <summary>When the popup last closed (Environment.TickCount64), so a bell click that closed it does not reopen it.</summary>
+    Private popupClosedAt As Long
 
     ''' <param name="openedAfterLogin">True from Program (after the login screen); tests leave it False.</param>
     Public Sub New(Optional openedAfterLogin As Boolean = False)
@@ -366,6 +368,9 @@ Public Class MainForm
             popup.Close()
             Return
         End If
+        ' Pressing on the bell already closed the popup (it closes itself when it loses focus,
+        ' just before this click arrives) - so this click must not open it again
+        If Environment.TickCount64 - popupClosedAt < 400 Then Return
         OpenNotifications()
     End Sub
 
@@ -380,6 +385,7 @@ Public Class MainForm
                 NavigateTo(AlertService.ScreenFor(n.ModuleName), n.BusinessId)
             End Sub
         AddHandler popup.FormClosed, Sub()
+                                         popupClosedAt = Environment.TickCount64
                                          RefreshNotificationCount()
                                          popup.Dispose()
                                      End Sub
