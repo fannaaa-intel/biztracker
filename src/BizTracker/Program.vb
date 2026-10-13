@@ -9,8 +9,15 @@ Friend Module Program
         ' Never crash: show a friendly message for any unexpected error.
         Application.SetUnhandledExceptionMode(UnhandledExceptionMode.CatchException)
         AddHandler Application.ThreadException,
-            Sub(sender, e) UiHelper.ShowError("Something went wrong:" & vbCrLf & e.Exception.Message &
-                                              vbCrLf & vbCrLf & "Please try again.", "Unexpected error")
+            Sub(sender, e)
+                ' A late message for a window that was already closed (e.g. after logout) is harmless
+                If TypeOf e.Exception Is ObjectDisposedException Then
+                    Debug.WriteLine("Ignored: " & e.Exception.ToString())
+                    Return
+                End If
+                UiHelper.ShowError("Something went wrong:" & vbCrLf & e.Exception.Message &
+                                   vbCrLf & vbCrLf & "Please try again.", "Unexpected error")
+            End Sub
 
         ' Login -> main window. Logging out returns to the login screen;
         ' closing either window exits the app.

@@ -413,6 +413,7 @@ Public Class MainForm
         If Not UiHelper.Confirm("You will return to the sign-in screen.", "Log out of BizTracker?", "Log out", "Stay") Then Return
         LoggedOut = True
         AuthService.Logout()
+        ActiveControl = Nothing     ' take focus off the page (its grid) before the window is disposed
         Close()
     End Sub
 
