@@ -56,7 +56,7 @@ Public Class WorkflowDialog
         ' --- Footer ---
         Dim btnAdvance = AddFooterButton(If(advanceText <> "", advanceText,
                                             If(nextStatus Is Nothing, "Advance", "Move to " & nextStatus)), "primary")
-        btnAdvance.Enabled = ready
+        UiHelper.SetAvailable(btnAdvance, If(ready, Nothing, If(blocker, "This record is already at its last step.")))
         AddHandler btnAdvance.Click, AddressOf Advance_Click
         If reject IsNot Nothing Then
             Dim btnReject = AddFooterButton("Reject…", "danger")

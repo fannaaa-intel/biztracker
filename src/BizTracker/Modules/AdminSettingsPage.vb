@@ -111,7 +111,7 @@ Public Class AdminSettingsPage
     Private Sub ShowSelected()
         Dim row = If(grid.SelectedRows.Count > 0, TryCast(grid.SelectedRows(0).DataBoundItem, SettingRow), Nothing)
         selected = If(row Is Nothing, Nothing, settings.FirstOrDefault(Function(s) s.SettingKey = row.Key))
-        btnEdit.Enabled = selected IsNot Nothing
+        UiHelper.SetAvailable(btnEdit, If(selected Is Nothing, "Select a setting in the list first.", Nothing))
         Toolbar.SetTip(btnEdit, If(selected Is Nothing, "Select a setting first", "Change the value of """ & row?.Setting & """"))
         ShowDetails()
     End Sub

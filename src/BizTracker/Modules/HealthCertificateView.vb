@@ -492,22 +492,21 @@ Public Class HealthCertificateView
 
     Private Sub UpdateButtons()
         Dim hasBusiness = business IsNot Nothing
-        btnAdd.Enabled = hasBusiness
-        btnEdit.Enabled = selected IsNot Nothing
-        btnDeactivate.Enabled = selected IsNot Nothing
+        Dim noSelection = If(roster.Count = 0, "This business has no employees yet - click Add Employee.", "Select an employee in the list first.")
+        UiHelper.SetAvailable(btnAdd, If(hasBusiness, Nothing, "Choose a business first."))
+        UiHelper.SetAvailable(btnEdit, If(selected Is Nothing, noSelection, Nothing))
+        UiHelper.SetAvailable(btnDeactivate, If(selected Is Nothing, noSelection, Nothing))
 
-        Dim blocker = HealthCertificateService.GetIssueBlocker(selected)
-        btnIssue.Enabled = blocker Is Nothing
-        tips.SetToolTip(btnIssue, If(blocker, If(selected?.Certificate Is Nothing, "Issue the first health certificate",
-                                                 "Renew the health certificate")))
+        Dim blocker = If(selected Is Nothing, noSelection, HealthCertificateService.GetIssueBlocker(selected))
+        UiHelper.SetAvailable(btnIssue, blocker)
+        tips.SetToolTip(btnIssue, If(selected?.Certificate Is Nothing, "Issue the first health certificate", "Renew the health certificate"))
 
         Dim picked = SelectedRoster()
         Dim due = picked.Where(Function(r) r.NeedsRenewal).Count()
-        btnRenewSelected.Enabled = picked.Count >= 2 AndAlso due > 0
-        tips.SetToolTip(btnRenewSelected,
-            If(picked.Count < 2, "Ctrl+click or Shift+click several employees, then renew them together",
-               If(due = 0, "None of the selected certificates is due for renewal",
-                  "Renew " & due & " of the " & picked.Count & " selected employees")))
+        UiHelper.SetAvailable(btnRenewSelected,
+            If(picked.Count < 2, "Renews several employees at once. Hold Ctrl (or Shift) and click 2 or more employees in the list first.",
+               If(due = 0, "None of the " & picked.Count & " selected employees needs a renewal - their certificates are still valid.", Nothing)))
+        tips.SetToolTip(btnRenewSelected, "Renew " & due & " of the " & picked.Count & " selected employees")
     End Sub
 
     Private Sub ShowDetails()

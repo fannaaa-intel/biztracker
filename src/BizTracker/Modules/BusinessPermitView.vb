@@ -491,17 +491,20 @@ Public Class BusinessPermitView
         Dim active = permits.Where(Function(p) p.Status <> BusinessPermitService.Rejected).ToList()
         Dim open = active.FirstOrDefault(Function(p) Not BusinessPermitService.IsFinal(p.Status))
 
-        btnNew.Enabled = hasBusiness AndAlso active.Count = 0
-        tips.SetToolTip(btnNew, If(active.Count > 0, "This business already has permits - use Renew Permit.", "File a new business permit"))
+        Dim noBusiness = If(Session.IsOwner, "No business is linked to your account.", "Choose a business first.")
+        UiHelper.SetAvailable(btnNew, If(Not hasBusiness, noBusiness,
+            If(active.Count > 0, "This business already has a business permit. New Application is only for a business's first permit - use Renew Permit for the next year.", Nothing)))
 
-        btnRenew.Enabled = hasBusiness AndAlso active.Count > 0 AndAlso open Is Nothing
-        tips.SetToolTip(btnRenew, If(open IsNot Nothing, "An application is already in progress (" & open.ReferenceNo & ").",
-                                     If(active.Count = 0, "No previous permit to renew - use New Application.", "File a renewal application")))
+        UiHelper.SetAvailable(btnRenew, If(Not hasBusiness, noBusiness,
+            If(active.Count = 0, "There is no previous permit to renew yet - use New Application.",
+            If(open IsNot Nothing, "Application " & open.ReferenceNo & " is still in progress (" & open.Status & "). Renew again after it is issued or rejected.", Nothing))))
 
-        btnView.Enabled = selected IsNot Nothing
-        btnStatus.Enabled = selected IsNot Nothing AndAlso Not BusinessPermitService.IsFinal(selected.Status)
-        btnDelete.Enabled = selected IsNot Nothing AndAlso selected.Status = BusinessPermitService.Submitted
-        tips.SetToolTip(btnDelete, "Delete (only applications that are still Submitted)")
+        Dim noSelection = If(permits.Count = 0, "There are no applications yet.", "Select an application in the list first.")
+        UiHelper.SetAvailable(btnView, If(selected Is Nothing, noSelection, Nothing))
+        UiHelper.SetAvailable(btnStatus, If(selected Is Nothing, noSelection,
+            If(BusinessPermitService.IsFinal(selected.Status), selected.ReferenceNo & " is already " & selected.Status & ". Its status can no longer change.", Nothing)))
+        UiHelper.SetAvailable(btnDelete, If(selected Is Nothing, noSelection,
+            If(selected.Status <> BusinessPermitService.Submitted, "Only applications that are still Submitted can be deleted. " & selected.ReferenceNo & " is " & selected.Status & ".", Nothing)))
     End Sub
 
     Private Sub ShowDetails()

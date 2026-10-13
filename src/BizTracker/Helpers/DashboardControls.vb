@@ -242,7 +242,7 @@ Public Class ModuleCard
 
     ''' <summary>Enables "Open", or disables it and explains why in the tooltip.</summary>
     Public Sub SetOpenState(enabled As Boolean, tip As String)
-        OpenButton.Enabled = enabled
+        UiHelper.SetAvailable(OpenButton, If(enabled, Nothing, tip))
         tips.SetToolTip(OpenButton, tip)
     End Sub
 

@@ -510,20 +510,21 @@ Public Class RealPropertyTaxView
         If Not canManage Then Return
         Dim hasBusiness = Business IsNot Nothing
         Dim year = TaxYear
-        btnAdd.Enabled = hasBusiness
-        toolbar.SetTip(btnAdd, If(hasBusiness, "Register a real property of this business", "No business selected."))
+        UiHelper.SetAvailable(btnAdd, If(hasBusiness, Nothing, "Choose a business first."))
+        toolbar.SetTip(btnAdd, "Register a real property of this business")
 
-        btnEdit.Enabled = selected IsNot Nothing
-        toolbar.SetTip(btnEdit, If(selected Is Nothing, "Select a property first.", "Edit the selected property"))
+        Dim noSelection = If(ledger.Count = 0, "This business has no properties yet - click Add Property.", "Select a property in the list first.")
+        UiHelper.SetAvailable(btnEdit, If(selected Is Nothing, noSelection, Nothing))
+        toolbar.SetTip(btnEdit, "Edit the selected property")
 
-        Dim assessBlocker = If(selected Is Nothing, "Select a property first.",
+        Dim assessBlocker = If(selected Is Nothing, noSelection,
                                RptService.GetAssessmentBlocker(selected.RealProperty.PropertyId, year))
-        btnAssess.Enabled = assessBlocker Is Nothing
-        toolbar.SetTip(btnAssess, If(assessBlocker, "Create the " & year & " assessment (basic + SEF) for the selected property"))
+        UiHelper.SetAvailable(btnAssess, assessBlocker)
+        toolbar.SetTip(btnAssess, "Create the " & year & " assessment (basic + SEF) for the selected property")
 
         Dim payBlocker As String
         If selected Is Nothing Then
-            payBlocker = "Select a property first."
+            payBlocker = noSelection
         ElseIf Not selected.IsAssessed Then
             payBlocker = "Generate the " & year & " assessment first."
         ElseIf selected.NextPayable Is Nothing Then
@@ -531,8 +532,8 @@ Public Class RealPropertyTaxView
         Else
             payBlocker = RptService.GetPaymentBlocker(selected, selected.NextPayable.Quarter)
         End If
-        btnPay.Enabled = payBlocker Is Nothing
-        toolbar.SetTip(btnPay, If(payBlocker, "Record the payment of " & If(selected?.NextPayable?.Label, "the next quarter")))
+        UiHelper.SetAvailable(btnPay, payBlocker)
+        toolbar.SetTip(btnPay, "Record the payment of " & If(selected?.NextPayable?.Label, "the next quarter"))
     End Sub
 
     Private Sub ShowDetails()

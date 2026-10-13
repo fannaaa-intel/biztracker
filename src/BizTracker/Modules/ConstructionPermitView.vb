@@ -358,27 +358,29 @@ Public Class ConstructionPermitView
 
     Private Sub UpdateButtons()
         Dim hasBusiness = Business IsNot Nothing
-        btnNew.Enabled = hasBusiness
-        toolbar.SetTip(btnNew, If(hasBusiness, "File a new construction permit application", "No business selected."))
-        btnView.Enabled = selected IsNot Nothing
-        toolbar.SetTip(btnView, If(selected Is Nothing, "Select a project first.", "Open the project details"))
+        UiHelper.SetAvailable(btnNew, If(hasBusiness, Nothing, If(Session.IsOwner, "No business is linked to your account.", "Choose a business first.")))
+        toolbar.SetTip(btnNew, "File a new construction permit application")
+        Dim noSelection = If(projects.Count = 0, "There are no construction projects yet.", "Select a project in the list first.")
+        UiHelper.SetAvailable(btnView, If(selected Is Nothing, noSelection, Nothing))
+        toolbar.SetTip(btnView, "Open the project details")
         If Not canManage Then Return
 
+        ' Stays clickable while a clearance is missing: the dialog explains it and offers Reject Project
         Dim advanceBlocker = ConstructionService.GetAdvanceBlocker(selected)
-        btnAdvance.Enabled = selected IsNot Nothing AndAlso Not ConstructionService.IsFinal(selected.Status) AndAlso selected.Status = ConstructionService.Active
-        toolbar.SetTip(btnAdvance, If(selected Is Nothing, "Select a project first.",
-                                      If(Not btnAdvance.Enabled, "The project is " & selected.Status & ".",
-                                         If(advanceBlocker, "Move to the " & ConstructionService.GetNextStage(selected.CurrentStage) & " stage"))))
+        UiHelper.SetAvailable(btnAdvance, If(selected Is Nothing, noSelection,
+            If(selected.Status <> ConstructionService.Active,
+               selected.ReferenceNo & " is " & selected.Status & "." & If(selected.Status = ConstructionService.OnHold, " Click Resume Project first.", " Its stage can no longer change."), Nothing)))
+        toolbar.SetTip(btnAdvance, If(advanceBlocker, "Move to the " & ConstructionService.GetNextStage(selected?.CurrentStage) & " stage"))
 
         If selected IsNot Nothing AndAlso selected.Status = ConstructionService.OnHold Then
             toolbar.SetActionText(btnHold, "Resume Project", "Resume")
-            btnHold.Enabled = True
+            UiHelper.SetAvailable(btnHold, Nothing)
             toolbar.SetTip(btnHold, "Continue processing this project")
         Else
             toolbar.SetActionText(btnHold, "Put On Hold", "Hold")
-            btnHold.Enabled = selected IsNot Nothing AndAlso selected.Status = ConstructionService.Active
-            toolbar.SetTip(btnHold, If(selected Is Nothing, "Select a project first.",
-                                       If(btnHold.Enabled, "Pause this project (a reason is required)", "The project is " & selected.Status & ".")))
+            UiHelper.SetAvailable(btnHold, If(selected Is Nothing, noSelection,
+                If(selected.Status <> ConstructionService.Active, selected.ReferenceNo & " is " & selected.Status & ", so it cannot be put on hold.", Nothing)))
+            toolbar.SetTip(btnHold, "Pause this project (a reason is required)")
         End If
     End Sub
 

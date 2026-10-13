@@ -83,7 +83,7 @@ Public Class AdminBackupPage
         End If
         infoList.SetRows(rows)
 
-        btnBackup.Enabled = blocker Is Nothing
+        UiHelper.SetAvailable(btnBackup, blocker)
         Toolbar.SetTip(btnBackup, If(blocker, "Save a full copy of " & BackupService.DatabaseName() & " as a .sql file"))
     End Sub
 

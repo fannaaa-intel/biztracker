@@ -71,8 +71,8 @@ Public Class UpdateStatusDialog
         btnAdvance = AddFooterButton(If(nextStatus Is Nothing, "Advance", "Move to " & nextStatus), "primary")
         Dim btnReject = AddFooterButton("Reject…", "danger")
         Dim btnCancel = AddFooterButton("Cancel")
-        btnAdvance.Enabled = nextStatus IsNot Nothing AndAlso blocker Is Nothing
-        btnReject.Enabled = Not BusinessPermitService.IsFinal(p.Status)
+        UiHelper.SetAvailable(btnAdvance, If(blocker, If(nextStatus Is Nothing, "This application is already " & p.Status & ".", Nothing)))
+        UiHelper.SetAvailable(btnReject, If(BusinessPermitService.IsFinal(p.Status), "This application is already " & p.Status & ".", Nothing))
         AddHandler btnAdvance.Click, AddressOf Advance_Click
         AddHandler btnReject.Click, AddressOf Reject_Click
         AddHandler btnCancel.Click, Sub() DialogResult = DialogResult.Cancel

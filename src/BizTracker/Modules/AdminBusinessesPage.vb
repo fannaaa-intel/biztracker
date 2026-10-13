@@ -153,19 +153,19 @@ Public Class AdminBusinessesPage
 
     Private Sub UpdateButtons()
         Dim has = selected IsNot Nothing
-        btnEdit.Enabled = has
-        Toolbar.SetTip(btnEdit, If(has, "Change the details of " & selected?.BusinessName, "Select a business first"))
+        UiHelper.SetAvailable(btnEdit, If(has, Nothing, "Select a business in the list first."))
+        Toolbar.SetTip(btnEdit, "Change the details of " & selected?.BusinessName)
 
         Dim ownerBlocker = BusinessService.GetOwnerAccountBlocker(selected)
-        btnOwner.Enabled = ownerBlocker Is Nothing
-        Toolbar.SetTip(btnOwner, If(ownerBlocker, "Create the sign-in account for the owner of " & selected?.BusinessName))
+        UiHelper.SetAvailable(btnOwner, ownerBlocker)
+        Toolbar.SetTip(btnOwner, "Create the sign-in account for the owner of " & selected?.BusinessName)
 
         Dim reactivate = has AndAlso Not selected.IsActive
         Toolbar.SetActionText(btnActive, If(reactivate, "Reactivate", "Deactivate"), If(reactivate, "Reactivate", "Deactivate"))
         UiHelper.StyleDangerButton(btnActive)
         If reactivate Then UiHelper.StylePrimaryButton(btnActive)
-        btnActive.Enabled = has
-        Toolbar.SetTip(btnActive, If(Not has, "Select a business first",
+        UiHelper.SetAvailable(btnActive, If(has, Nothing, "Select a business in the list first."))
+        Toolbar.SetTip(btnActive, If(Not has, "",
                                      If(reactivate, "Make " & selected.BusinessName & " active again (its owner can sign in again)",
                                         "Close " & selected?.BusinessName & " (soft delete: its records are kept)")))
     End Sub

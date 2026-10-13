@@ -112,7 +112,7 @@ Public NotInheritable Class InspectionService
         If existing.Status = Completed Then
             Return "The " & year & " inspection " & existing.ReferenceNo & " is already completed (" & existing.CertificateNo & ")."
         End If
-        Return "Inspection " & existing.ReferenceNo & " for " & year & " is still open (" & existing.Status & ")."
+        Return "Inspection " & existing.ReferenceNo & " for " & year & " is still open (" & existing.Status & "). Finish or cancel it first."
     End Function
 
     ''' <summary>Checks a schedule date/time. Key: "date". allowToday = False requires a date after today.</summary>

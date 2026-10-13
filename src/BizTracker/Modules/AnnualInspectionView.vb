@@ -377,18 +377,18 @@ Public Class AnnualInspectionView
         If Not canManage Then Return
         Dim hasBusiness = Business IsNot Nothing
         Dim suggested = SuggestedDate()
-        Dim scheduleBlocker = If(Not hasBusiness, "No business selected.",
+        Dim scheduleBlocker = If(Not hasBusiness, "Choose a business first.",
                                  If(suggested.HasValue, Nothing, InspectionService.GetScheduleBlocker(Business.BusinessId, Date.Today.Year)))
-        btnSchedule.Enabled = scheduleBlocker Is Nothing
-        toolbar.SetTip(btnSchedule, If(scheduleBlocker, "Schedule the annual inspection of this business"))
+        UiHelper.SetAvailable(btnSchedule, scheduleBlocker)
+        toolbar.SetTip(btnSchedule, "Schedule the annual inspection of this business")
 
         Dim recordBlocker = InspectionService.GetRecordBlocker(selected)
-        btnRecord.Enabled = recordBlocker Is Nothing
-        toolbar.SetTip(btnRecord, If(recordBlocker, "Record a department's result (Passed / Failed)"))
+        UiHelper.SetAvailable(btnRecord, recordBlocker)
+        toolbar.SetTip(btnRecord, "Record a department's result (Passed / Failed)")
 
         Dim dateTip As String
         If selected Is Nothing Then
-            dateTip = "Select an inspection first."
+            dateTip = If(inspections.Count = 0, "This business has no inspections yet.", "Select an inspection in the list first.")
         ElseIf selected.Status = InspectionService.Scheduled Then
             dateTip = Nothing
             toolbar.SetTip(btnDate, "Move the inspection to another date or time")
@@ -396,15 +396,14 @@ Public Class AnnualInspectionView
             dateTip = Nothing
             toolbar.SetTip(btnDate, "Set the re-inspection date")
         Else
-            dateTip = "Only a Scheduled inspection or one For Re-inspection can get a new date."
+            dateTip = "Only a Scheduled inspection or one For Re-inspection can get a new date. " & selected.ReferenceNo & " is " & selected.Status & "."
         End If
-        btnDate.Enabled = dateTip Is Nothing
-        If dateTip IsNot Nothing Then toolbar.SetTip(btnDate, dateTip)
+        UiHelper.SetAvailable(btnDate, dateTip)
 
-        btnCancel.Enabled = selected IsNot Nothing AndAlso Not InspectionService.IsFinal(selected.Status)
-        toolbar.SetTip(btnCancel, If(selected Is Nothing, "Select an inspection first.",
-                                     If(btnCancel.Enabled, "Cancel this inspection (a reason is required)",
-                                        "This inspection is already " & selected.Status & ".")))
+        UiHelper.SetAvailable(btnCancel, If(selected Is Nothing, "Select an inspection in the list first.",
+                                            If(InspectionService.IsFinal(selected.Status),
+                                               selected.ReferenceNo & " is already " & selected.Status & ", so it cannot be cancelled.", Nothing)))
+        toolbar.SetTip(btnCancel, "Cancel this inspection (a reason is required)")
     End Sub
 
     ''' <summary>

@@ -319,12 +319,13 @@ Public Class LoginForm
     Private Sub LockTimer_Tick(sender As Object, e As EventArgs)
         Dim seconds = AuthService.GetLockedSeconds(txtUsername.Text)
         If seconds > 0 Then
-            btnLogin.Enabled = False
+            UiHelper.SetAvailable(btnLogin, "This username is locked for 1 minute after 5 wrong passwords. Wait " & seconds &
+                                            " seconds, or ask the administrator to reset the password.")
             btnLogin.Text = "Try again in " & seconds & "s"
             ShowError("Too many failed attempts. Please wait " & seconds & " seconds.")
         Else
             lockTimer.Stop()
-            btnLogin.Enabled = True
+            UiHelper.SetAvailable(btnLogin, Nothing)
             btnLogin.Text = "Sign in"
             HideError()
             txtPassword.Focus()

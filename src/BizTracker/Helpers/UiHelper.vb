@@ -83,6 +83,11 @@ Public Module UiHelper
         buttonColors.Add(btn, {back, fore})
         RemoveHandler btn.EnabledChanged, AddressOf Button_EnabledChanged
         AddHandler btn.EnabledChanged, AddressOf Button_EnabledChanged
+        RemoveHandler btn.Paint, AddressOf Button_Paint
+        AddHandler btn.Paint, AddressOf Button_Paint
+        RemoveHandler btn.ParentChanged, AddressOf Button_ParentChanged
+        AddHandler btn.ParentChanged, AddressOf Button_ParentChanged
+        WatchParent(btn.Parent)
         ApplyButtonState(btn)
     End Sub
 
@@ -90,19 +95,153 @@ Public Module UiHelper
         ApplyButtonState(DirectCast(sender, Button))
     End Sub
 
-    ''' <summary>Disabled buttons turn light gray so they clearly look unavailable.</summary>
     Private Sub ApplyButtonState(btn As Button)
         Dim colors As Color() = Nothing
         If Not buttonColors.TryGetValue(btn, colors) Then Return
-        If btn.Enabled Then
-            btn.BackColor = colors(0)
-            btn.ForeColor = colors(1)
-            btn.Cursor = Cursors.Hand
-        Else
-            btn.BackColor = Theme.StatusGraySoft
-            btn.ForeColor = Theme.TextMuted
-            btn.Cursor = Cursors.Default
+        btn.BackColor = colors(0)
+        btn.ForeColor = colors(1)
+        btn.Cursor = Cursors.Hand
+        btn.Invalidate()       ' Button_Paint draws the unavailable look
+    End Sub
+
+    ' ==================== Unavailable buttons ====================
+    ' A button that cannot be used yet is drawn faded (dashed border + lock icon). Windows sends no
+    ' mouse events or tooltips to a disabled button, so its parent watches the mouse instead: hovering
+    ' or clicking the button shows WHY it is unavailable (the reason given to SetAvailable).
+
+    ''' <summary>Why each unavailable button cannot be used (set with SetAvailable).</summary>
+    Private ReadOnly unavailableReasons As New Runtime.CompilerServices.ConditionalWeakTable(Of Button, String)
+    Private ReadOnly watchedParents As New Runtime.CompilerServices.ConditionalWeakTable(Of Control, Object)
+    Private ReadOnly reasonTip As New ToolTip With {.ToolTipTitle = "Not available yet", .ToolTipIcon = ToolTipIcon.Info}
+    Private reasonShownFor As Button
+
+    ''' <summary>
+    ''' Turns a button on (reason = Nothing or "") or off. When off, hovering or clicking it shows the
+    ''' reason, so always say what is missing, e.g. "Select an application first."
+    ''' </summary>
+    Public Sub SetAvailable(btn As Button, reason As String)
+        unavailableReasons.Remove(btn)
+        If Not String.IsNullOrEmpty(reason) Then unavailableReasons.Add(btn, reason)
+        btn.Enabled = String.IsNullOrEmpty(reason)
+        If reasonShownFor Is btn Then HideReason()
+    End Sub
+
+    ''' <summary>The reason shown for an unavailable button (a general one if none was given).</summary>
+    Public Function GetUnavailableReason(btn As Button) As String
+        Dim reason As String = Nothing
+        If unavailableReasons.TryGetValue(btn, reason) Then Return reason
+        Return "This action is not available for the current selection."
+    End Function
+
+    Private Sub Button_ParentChanged(sender As Object, e As EventArgs)
+        WatchParent(DirectCast(sender, Control).Parent)
+    End Sub
+
+    ''' <summary>Listens to the mouse on a button's container (once per container).</summary>
+    Private Sub WatchParent(parent As Control)
+        If parent Is Nothing Then Return
+        Dim seen As Object = Nothing
+        If watchedParents.TryGetValue(parent, seen) Then Return
+        watchedParents.Add(parent, True)
+        AddHandler parent.MouseMove, AddressOf Parent_MouseMove
+        AddHandler parent.MouseDown, AddressOf Parent_MouseDown
+        AddHandler parent.MouseLeave, Sub(s, e)
+                                          DirectCast(s, Control).Cursor = Cursors.Default
+                                          HideReason()
+                                      End Sub
+    End Sub
+
+    ''' <summary>The unavailable styled button under the mouse, or Nothing.</summary>
+    Private Function UnavailableButtonAt(parent As Control, location As Point) As Button
+        Dim btn = TryCast(parent.GetChildAtPoint(location, GetChildAtPointSkip.Invisible), Button)
+        Dim colors As Color() = Nothing
+        If btn Is Nothing OrElse btn.Enabled OrElse Not buttonColors.TryGetValue(btn, colors) Then Return Nothing
+        Return btn
+    End Function
+
+    Private Sub Parent_MouseMove(sender As Object, e As MouseEventArgs)
+        Dim parent = DirectCast(sender, Control)
+        Dim btn = UnavailableButtonAt(parent, e.Location)
+        parent.Cursor = If(btn Is Nothing, Cursors.Default, Cursors.No)
+        If btn Is Nothing Then
+            HideReason()
+        ElseIf btn IsNot reasonShownFor Then
+            ShowReason(btn)
         End If
+    End Sub
+
+    Private Sub Parent_MouseDown(sender As Object, e As MouseEventArgs)
+        Dim btn = UnavailableButtonAt(DirectCast(sender, Control), e.Location)
+        If btn IsNot Nothing Then ShowReason(btn)      ' a click shows the reason again
+    End Sub
+
+    ''' <summary>Shows the reason just under the button, wrapped to a readable width.</summary>
+    Public Sub ShowReason(btn As Button)
+        If btn.Parent Is Nothing Then Return
+        reasonShownFor = btn
+        reasonTip.Show(WrapText(GetUnavailableReason(btn), 60), btn.Parent, btn.Left, btn.Bottom + Dpi(4), 6000)
+    End Sub
+
+    Private Sub HideReason()
+        If reasonShownFor Is Nothing Then Return
+        If reasonShownFor.Parent IsNot Nothing AndAlso Not reasonShownFor.Parent.IsDisposed Then reasonTip.Hide(reasonShownFor.Parent)
+        reasonShownFor = Nothing
+    End Sub
+
+    ''' <summary>Breaks a long sentence into lines of about maxChars (tooltips do not wrap by themselves).</summary>
+    Public Function WrapText(text As String, maxChars As Integer) As String
+        Dim lines As New List(Of String)
+        For Each paragraph In text.Replace(vbCrLf, vbLf).Split(vbLf(0))
+            Dim line = ""
+            For Each word In paragraph.Split(" "c)
+                If line <> "" AndAlso line.Length + 1 + word.Length > maxChars Then
+                    lines.Add(line)
+                    line = word
+                Else
+                    line = If(line = "", word, line & " " & word)
+                End If
+            Next
+            lines.Add(line)
+        Next
+        Return String.Join(vbCrLf, lines)
+    End Function
+
+    ''' <summary>Mixes two colors (amount 0 = a, 1 = b).</summary>
+    Private Function Mix(a As Color, b As Color, amount As Single) As Color
+        Return Color.FromArgb(CInt(a.R + (CInt(b.R) - a.R) * amount), CInt(a.G + (CInt(b.G) - a.G) * amount),
+                              CInt(a.B + (CInt(b.B) - a.B) * amount))
+    End Function
+
+    ''' <summary>
+    ''' Unavailable look: the button fades into its background (so it no longer looks like a
+    ''' white or blue button), with a dashed border and a lock icon in front of the label.
+    ''' </summary>
+    Private Sub Button_Paint(sender As Object, e As PaintEventArgs)
+        Dim btn = DirectCast(sender, Button)
+        If btn.Enabled Then Return
+        Dim ground = If(btn.Parent IsNot Nothing, btn.Parent.BackColor, Color.White)
+        Dim back = Mix(ground, Color.White, 0.35F)
+        Dim fore = Mix(back, Theme.TextDark, 0.45F)
+        Dim g = e.Graphics
+        g.Clear(back)
+        Using pen As New Pen(Mix(back, Theme.TextDark, 0.3F)) With {.DashStyle = DashStyle.Dash}
+            g.DrawRectangle(pen, 0, 0, btn.Width - 1, btn.Height - 1)
+        End Using
+
+        Const flags = TextFormatFlags.NoPrefix Or TextFormatFlags.SingleLine Or TextFormatFlags.VerticalCenter
+        Dim textWidth = TextRenderer.MeasureText(g, btn.Text, btn.Font, Size.Empty, flags).Width
+        Dim lockFont = Theme.IconFont(9.0F)      ' cached by Theme - do not dispose
+        Dim lockWidth = TextRenderer.MeasureText(g, Icons.Lock, lockFont, Size.Empty, flags Or TextFormatFlags.NoPadding).Width
+        Dim gap = Dpi(5)
+        Dim total = lockWidth + gap + textWidth
+        If total > btn.Width - Dpi(8) Then
+            ' Too narrow for the icon: label only
+            TextRenderer.DrawText(g, btn.Text, btn.Font, btn.ClientRectangle, fore, flags Or TextFormatFlags.HorizontalCenter)
+            Return
+        End If
+        Dim x = (btn.Width - total) \ 2
+        TextRenderer.DrawText(g, Icons.Lock, lockFont, New Rectangle(x, 0, lockWidth, btn.Height), fore, flags Or TextFormatFlags.NoPadding)
+        TextRenderer.DrawText(g, btn.Text, btn.Font, New Rectangle(x + lockWidth + gap, 0, textWidth, btn.Height), fore, flags)
     End Sub
 
     ''' <summary>

@@ -121,8 +121,9 @@ Public NotInheritable Class SanitaryPermitService
                        FirstOrDefault(Function(p) p.PermitYear = year AndAlso p.Status <> Rejected)
         If existing Is Nothing Then Return Nothing
         Return If(existing.Status = Issued,
-                  "The " & year & " sanitary permit " & existing.PermitNo & " is already issued (valid until Dec 31).",
-                  "Application " & existing.PermitNo & " for " & year & " is still in progress.")
+                  "The " & year & " sanitary permit " & existing.PermitNo & " is already issued (valid until Dec 31). " &
+                  "The " & (year + 1) & " renewal can be filed from January 1, " & (year + 1) & ".",
+                  "Application " & existing.PermitNo & " for " & year & " is still in progress (" & existing.Status & "). Finish or reject it first.")
     End Function
 
     ''' <summary>Checks an application. Keys: "category", "filed".</summary>

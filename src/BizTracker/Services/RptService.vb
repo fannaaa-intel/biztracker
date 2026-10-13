@@ -359,7 +359,7 @@ Public NotInheritable Class RptService
             Return "Assessments can be generated for " & MinTaxYear & " to " & MaxTaxYear & " only."
         End If
         If RptRepository.GetAssessmentsByPropertyId(propertyId).Any(Function(a) a.TaxYear = taxYear) Then
-            Return "This property already has a " & taxYear & " assessment."
+            Return "This property already has a " & taxYear & " assessment. To bill another year, pick it in the tax year box."
         End If
         Return Nothing
     End Function

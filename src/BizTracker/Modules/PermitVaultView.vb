@@ -319,8 +319,8 @@ Public Class PermitVaultView
 
     Private Sub UpdateButtons()
         Dim blocker = DocumentService.GetPrintBlocker(selected)
-        btnPrint.Enabled = blocker Is Nothing
-        toolbar.SetTip(btnPrint, If(blocker, "Open " & selected.ReferenceNo & " in your browser to print or save as PDF"))
+        UiHelper.SetAvailable(btnPrint, If(selected Is Nothing AndAlso documents.Count = 0, "This business has no issued documents yet.", blocker))
+        toolbar.SetTip(btnPrint, "Open " & selected?.ReferenceNo & " in your browser to print or save as PDF")
     End Sub
 
     Private Sub ShowDetails()

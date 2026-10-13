@@ -350,18 +350,23 @@ Public Class SanitaryPermitView
         Dim blocker = If(hasBusiness, SanitaryPermitService.GetFilingBlocker(Business.BusinessId), "No business selected.")
         Dim hasPrevious = permits.Any(Function(p) p.Status <> SanitaryPermitService.Rejected)
 
-        btnNew.Enabled = canFile AndAlso Not hasPrevious AndAlso blocker Is Nothing
-        toolbar.SetTip(btnNew, If(hasPrevious, "This business already has a sanitary permit - use Renew Permit.",
-                                  If(blocker, "Apply for a sanitary permit for " & Date.Today.Year)))
-        btnRenew.Enabled = canFile AndAlso hasPrevious AndAlso blocker Is Nothing
-        toolbar.SetTip(btnRenew, If(Not hasPrevious, "No previous permit to renew - use New Application.",
-                                    If(blocker, "File the " & Date.Today.Year & " renewal")))
+        Dim fileBlocker = If(Not hasBusiness, If(Session.IsOwner, "No business is linked to your account.", "Choose a business first."),
+                          If(Not canFile, "Only the Municipal Health Office or the business owner can file sanitary permits.", blocker))
+        UiHelper.SetAvailable(btnNew, If(fileBlocker,
+            If(hasPrevious, "This business already has a sanitary permit. New Application is only for its first permit - use Renew Permit.", Nothing)))
+        toolbar.SetTip(btnNew, "Apply for a sanitary permit for " & Date.Today.Year)
+        UiHelper.SetAvailable(btnRenew, If(fileBlocker,
+            If(Not hasPrevious, "There is no previous sanitary permit to renew yet - use New Application.", Nothing)))
+        toolbar.SetTip(btnRenew, "File the " & Date.Today.Year & " renewal")
 
-        btnView.Enabled = selected IsNot Nothing
-        btnInspect.Enabled = selected IsNot Nothing AndAlso selected.Status = SanitaryPermitService.ForInspection
-        toolbar.SetTip(btnInspect, If(btnInspect.Enabled, "Record the on-site inspection score and findings",
-                                      "Inspections are recorded when the application is For Inspection"))
-        btnStatus.Enabled = selected IsNot Nothing AndAlso Not SanitaryPermitService.IsFinal(selected.Status)
+        Dim noSelection = If(permits.Count = 0, "There are no applications yet.", "Select an application in the list first.")
+        UiHelper.SetAvailable(btnView, If(selected Is Nothing, noSelection, Nothing))
+        UiHelper.SetAvailable(btnInspect, If(selected Is Nothing, noSelection,
+            If(selected.Status <> SanitaryPermitService.ForInspection,
+               "The inspection is recorded when the application is For Inspection. " & selected.PermitNo & " is " & selected.Status & ".", Nothing)))
+        toolbar.SetTip(btnInspect, "Record the on-site inspection score and findings")
+        UiHelper.SetAvailable(btnStatus, If(selected Is Nothing, noSelection,
+            If(SanitaryPermitService.IsFinal(selected.Status), selected.PermitNo & " is already " & selected.Status & ". Its status can no longer change.", Nothing)))
     End Sub
 
     Private Sub ShowDetails()

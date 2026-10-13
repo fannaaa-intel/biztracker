@@ -142,8 +142,8 @@ Public Class AdminUsersPage
 
     Private Sub UpdateButtons()
         Dim has = selected IsNot Nothing
-        btnEdit.Enabled = has
-        btnReset.Enabled = has
+        UiHelper.SetAvailable(btnEdit, If(has, Nothing, "Select an account in the list first."))
+        UiHelper.SetAvailable(btnReset, If(has, Nothing, "Select an account in the list first."))
         Toolbar.SetTip(btnEdit, If(has, "Change " & selected?.Username & "'s name, role or business", "Select an account first"))
         Toolbar.SetTip(btnReset, If(has, "Give " & selected?.Username & " a new temporary password", "Select an account first"))
 
@@ -152,7 +152,7 @@ Public Class AdminUsersPage
         UiHelper.StyleDangerButton(btnActive)
         If activate Then UiHelper.StylePrimaryButton(btnActive)
         Dim blocker = UserService.GetActivationBlocker(selected)
-        btnActive.Enabled = blocker Is Nothing
+        UiHelper.SetAvailable(btnActive, blocker)
         Toolbar.SetTip(btnActive, If(blocker, If(activate, "Let " & selected.Username & " sign in again",
                                                  "Stop " & selected?.Username & " from signing in (the account and its history are kept)")))
     End Sub
