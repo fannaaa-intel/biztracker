@@ -2,3 +2,4 @@
 *.vb text eol=crlf
 *.sql text eol=lf
 *.md text eol=lf
+*.sh text eol=lf
