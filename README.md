@@ -16,6 +16,62 @@ Built with VB.NET, Windows Forms (.NET 8) and MySQL (MariaDB via XAMPP).
 
 ---
 
+## Quick reference: credentials
+
+**App logins.** Every password is **`password123`**.
+
+| Username | Role |
+|---|---|
+| `admin` | Admin (everything) |
+| `bplo` | BPLO |
+| `health` | Health |
+| `assessor` | Assessor |
+| `building` | Building |
+| `inspector` | Inspector |
+| `owner` | Owner of Cristan's Bakeshop |
+
+**Database (XAMPP MySQL)**
+
+| Setting | Value |
+|---|---|
+| Server | `localhost` |
+| Port | `3306` |
+| Database | `biztracker_db` |
+| User | `root` |
+| Password | *(empty)* |
+| phpMyAdmin | <http://localhost/phpmyadmin> |
+
+**GitHub repo:** <https://github.com/fannaaa-intel/biztracker> (sign in with your own GitHub account; never save that password here).
+
+---
+
+## Working on two laptops
+
+**First time on a new laptop:**
+```
+cd C:\Users\<your-user>\source\repos
+git clone https://github.com/fannaaa-intel/biztracker.git BizTracker
+cd BizTracker
+```
+Then import the database (Setup step 2 below) and run the app (Setup step 3).
+
+**Every time you sit down to work:** get the latest code.
+```
+git pull
+```
+
+**Every time you finish working:** upload your changes.
+```
+git add .
+git commit -m "what you changed"
+git push
+```
+
+Git does **not** copy the database data, the `uploads/` folder, or `bin/` and `obj/`. If `database/biztracker_db.sql`
+changed, re-import it on the other laptop. Re-importing resets that laptop's data to the sample data.
+
+---
+
 ## Requirements
 
 | What | Version / notes |
