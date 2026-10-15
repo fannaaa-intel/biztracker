@@ -1,4 +1,7 @@
-''' <summary>One quarter of one property's assessment (computed for the ledger, never stored).</summary>
+''' <summary>
+''' One quarter of one property's assessment (computed for the ledger, never stored).
+''' A quarter can have several payments (partial payments); only active (not voided) payments count.
+''' </summary>
 Public Class RptQuarter
     Public Property AssessmentId As Integer
     Public Property PropertyId As Integer
@@ -6,18 +9,57 @@ Public Class RptQuarter
     Public Property TaxYear As Integer
     Public Property Quarter As Integer
     Public Property DueDate As Date
-    ''' <summary>The quarter's share of the annual tax.</summary>
+    ''' <summary>The quarter's share of the annual tax (the principal billed).</summary>
     Public Property Amount As Decimal
-    ''' <summary>The payment of this quarter, or Nothing while unpaid.</summary>
-    Public Property Payment As RptPayment
-    ''' <summary>Paid / Overdue / Due Soon / Not Yet Due (from StatusService).</summary>
+    ''' <summary>Active payments of this quarter, in the order they were recorded.</summary>
+    Public Property Payments As New List(Of RptPayment)
+    ''' <summary>Penalty still due if paid today (0 once the principal is fully paid).</summary>
+    Public Property PenaltyDue As Decimal
+    ''' <summary>Paid / Overdue / Partially Paid / Due Soon / Not Yet Due (from StatusService).</summary>
     Public Property Status As String = ""
-    ''' <summary>Paid: the penalty that was charged. Unpaid: the penalty if paid today.</summary>
-    Public Property Penalty As Decimal
 
+    Public ReadOnly Property PrincipalPaid As Decimal
+        Get
+            Return Payments.Sum(Function(p) p.AmountPaid)
+        End Get
+    End Property
+
+    Public ReadOnly Property PenaltyPaid As Decimal
+        Get
+            Return Payments.Sum(Function(p) p.Penalty)
+        End Get
+    End Property
+
+    ''' <summary>Everything paid on this quarter (principal + penalty).</summary>
+    Public ReadOnly Property TotalPaid As Decimal
+        Get
+            Return PrincipalPaid + PenaltyPaid
+        End Get
+    End Property
+
+    Public ReadOnly Property RemainingPrincipal As Decimal
+        Get
+            Return Math.Max(0D, Amount - PrincipalPaid)
+        End Get
+    End Property
+
+    ''' <summary>What it costs to settle the quarter today: remaining principal + penalty due.</summary>
+    Public ReadOnly Property BalanceDue As Decimal
+        Get
+            Return RemainingPrincipal + PenaltyDue
+        End Get
+    End Property
+
+    ''' <summary>A quarter is Paid only when its principal is fully paid.</summary>
     Public ReadOnly Property IsPaid As Boolean
         Get
-            Return Payment IsNot Nothing
+            Return RemainingPrincipal = 0D
+        End Get
+    End Property
+
+    Public ReadOnly Property IsPartiallyPaid As Boolean
+        Get
+            Return Not IsPaid AndAlso Payments.Count > 0
         End Get
     End Property
 
@@ -27,10 +69,24 @@ Public Class RptQuarter
         End Get
     End Property
 
+    ''' <summary>The latest active payment, or Nothing.</summary>
+    Public ReadOnly Property LastPayment As RptPayment
+        Get
+            Return Payments.LastOrDefault()
+        End Get
+    End Property
+
     ''' <summary>"Q2 2026"</summary>
     Public ReadOnly Property Label As String
         Get
             Return "Q" & Quarter & " " & TaxYear
+        End Get
+    End Property
+
+    ''' <summary>"partially paid, ₱67.10 left" (for details and tooltips), or "" when not partly paid.</summary>
+    Public ReadOnly Property PartialNote As String
+        Get
+            Return If(IsPartiallyPaid, "partially paid, " & UiHelper.FormatMoney(BalanceDue) & " left", "")
         End Get
     End Property
 End Class
@@ -49,16 +105,30 @@ Public Class RptLedgerRow
         End Get
     End Property
 
-    Public ReadOnly Property PaidAmount As Decimal
+    ''' <summary>Tax (principal) paid so far this year.</summary>
+    Public ReadOnly Property PrincipalPaid As Decimal
         Get
-            Return Quarters.Where(Function(q) q.IsPaid).Sum(Function(q) q.Payment.AmountPaid)
+            Return Quarters.Sum(Function(q) q.PrincipalPaid)
         End Get
     End Property
 
-    ''' <summary>Unpaid tax of the year (without penalties).</summary>
+    Public ReadOnly Property PenaltyPaid As Decimal
+        Get
+            Return Quarters.Sum(Function(q) q.PenaltyPaid)
+        End Get
+    End Property
+
+    ''' <summary>What is left to pay this year if paid today: remaining principal + current penalties.</summary>
     Public ReadOnly Property Balance As Decimal
         Get
-            Return Quarters.Where(Function(q) Not q.IsPaid).Sum(Function(q) q.Amount)
+            Return Quarters.Sum(Function(q) q.BalanceDue)
+        End Get
+    End Property
+
+    ''' <summary>Active payments of the year (all quarters).</summary>
+    Public ReadOnly Property ActivePayments As IEnumerable(Of RptPayment)
+        Get
+            Return Quarters.SelectMany(Function(q) q.Payments)
         End Get
     End Property
 
@@ -69,16 +139,60 @@ Public Class RptLedgerRow
         End Get
     End Property
 
-    ''' <summary>The most urgent quarter status: Overdue, Due Soon, Not Yet Due, Paid (or Not Assessed).</summary>
+    ''' <summary>The most urgent quarter status: Overdue, Due Soon, Partially Paid, Not Yet Due, Paid (or Not Assessed).</summary>
     Public ReadOnly Property WorstStatus As String
         Get
             If Not IsAssessed Then Return RptService.NotAssessed
-            For Each s In {StatusService.Overdue, StatusService.DueSoon, StatusService.NotYetDue}
+            For Each s In {StatusService.Overdue, StatusService.DueSoon, StatusService.PartiallyPaid, StatusService.NotYetDue}
                 If Quarters.Any(Function(q) q.Status = s) Then Return s
             Next
             Return StatusService.Paid
         End Get
     End Property
+End Class
+
+''' <summary>How one payment amount is split (RptService.AllocatePayment).</summary>
+Public Class PaymentSplit
+    Public Property ToPenalty As Decimal
+    Public Property ToPrincipal As Decimal
+End Class
+
+''' <summary>Live numbers for the Record Payment dialog (RptService.PreviewPayment). Nothing is saved.</summary>
+Public Class PaymentPreview
+    Public Property QuarterAmount As Decimal
+    ''' <summary>Already paid on the quarter (principal + penalty).</summary>
+    Public Property AlreadyPaid As Decimal
+    Public Property RemainingPrincipal As Decimal
+    Public Property MonthsLate As Integer
+    Public Property PenaltyRate As Decimal
+    Public Property PenaltyDue As Decimal
+    ''' <summary>Remaining principal + penalty due on the payment date.</summary>
+    Public Property TotalDue As Decimal
+    Public Property Amount As Decimal
+    Public Property Split As New PaymentSplit
+    ''' <summary>What is still owed on the quarter after this payment (as of the payment date).</summary>
+    Public ReadOnly Property RemainingAfter As Decimal
+        Get
+            Return Math.Max(0D, TotalDue - Split.ToPenalty - Split.ToPrincipal)
+        End Get
+    End Property
+
+    ''' <summary>True when this payment pays the rest of the quarter's principal.</summary>
+    Public ReadOnly Property CompletesQuarter As Boolean
+        Get
+            Return RemainingPrincipal > 0D AndAlso Split.ToPrincipal >= RemainingPrincipal
+        End Get
+    End Property
+End Class
+
+''' <summary>What the cashier typed in the Record Payment dialog.</summary>
+Public Class RptPaymentInput
+    Public Property PaymentDate As Date = Date.Today
+    Public Property Amount As Decimal
+    Public Property Method As String = PaymentMethods.Cash
+    Public Property ReferenceNo As String = ""
+    Public Property OrNo As String = ""
+    Public Property Remarks As String = ""
 End Class
 
 ''' <summary>Outcome of RptService.RecordPayment.</summary>
@@ -90,14 +204,31 @@ Public Class RptPaymentResult
     Public Property EndorsedReference As String
 End Class
 
+''' <summary>What voiding a payment would do (RptService.GetVoidImpact), shown before the user confirms.</summary>
+Public Class VoidImpact
+    Public Property Payment As RptPayment
+    ''' <summary>Why it cannot be voided (Nothing = it can).</summary>
+    Public Property Blocker As String
+    ''' <summary>True if the payment's quarter becomes overdue again.</summary>
+    Public Property BecomesOverdue As Boolean
+    ''' <summary>RPT endorsement going back to Pending on the open business permit application (or Nothing).</summary>
+    Public Property Endorsement As EndorsementChange
+    ''' <summary>Set when the quarter becomes overdue but the business permit is already final (endorsement stays).</summary>
+    Public Property FinalPermitWarning As String
+End Class
+
 ''' <summary>
 ''' Real Property Tax rules (Assessor / Treasurer). Screens call this class.
 '''   - Annual tax = basic (rpt_basic_rate) + SEF (rpt_sef_rate) of the assessed value, e.g. ₱40,000 -> ₱400 + ₱400 = ₱800.
 '''   - Payable quarterly; each quarter is due at the end of the quarter (Mar 31, Jun 30, Sep 30, Dec 31).
-'''   - Late payment: rpt_penalty_rate_monthly per month late (a fraction of a month counts), capped at rpt_penalty_max.
-'''   - Quarters are paid in order. The Official Receipt number is OR-YYYY-xxxxx.
-'''   - Tax Clearance is "Issued" only when no quarter whose due date has passed is unpaid; then the RPT
-'''     endorsement on the business permit application is set to Endorsed.
+'''   - Walk-in payments: a quarter can be paid in several parts. A quarter is Paid only when its principal is fully paid.
+'''   - Late payment: rpt_penalty_rate_monthly per month late (a part of a month counts), at most rpt_penalty_max,
+'''     on the REMAINING principal: each peso is charged the months it stayed unpaid (ComputePenaltyDue).
+'''   - A payment goes to the penalty first, then to principal (AllocatePayment / PenaltyFirst).
+'''   - Quarters are paid in order. The Official Receipt number is typed from the AF 51 booklet (unique).
+'''   - Tax Clearance is "Issued" only when every quarter already due is fully paid; then the RPT endorsement on the
+'''     business permit application is set to Endorsed (in the same transaction as the payment).
+'''   - Payments are never deleted: a mistake is VOIDED (newest payment first) with a reason.
 ''' Assessor and Admin make changes; an Owner sees only their own business (read-only). Every change is audited.
 ''' </summary>
 Public NotInheritable Class RptService
@@ -111,6 +242,20 @@ Public NotInheritable Class RptService
     Public Const NotAssessed As String = "Not Assessed"
     Public Const ClearanceIssued As String = "Issued"
     Public Const ClearanceNotIssued As String = "Not Issued"
+    Public Const Voided As String = "Voided"
+    Public Const Active As String = "Active"
+
+    Public Const MaxOrNoLength As Integer = 30          ' rpt_payments.or_no
+    Public Const MaxReferenceLength As Integer = 50     ' rpt_payments.reference_no
+    Public Const MaxRemarksLength As Integer = 255      ' rpt_payments.remarks
+    Public Const MaxVoidReasonLength As Integer = 200
+
+    ''' <summary>
+    ''' THE PAYMENT ORDER RULE (one place): True = a payment pays the penalty due first, then the principal.
+    ''' To apply payments to principal first instead, set this to False. Note: a quarter counts as Paid as soon as
+    ''' its principal is fully paid, so with principal first any penalty still unpaid at that moment is not collected.
+    ''' </summary>
+    Public Const PenaltyFirst As Boolean = True
 
     Private Const PropertiesTable As String = "properties"
     Private Const AssessmentsTable As String = "rpt_assessments"
@@ -183,9 +328,60 @@ Public NotInheritable Class RptService
         Return Math.Min(PenaltyRateMonthly * GetMonthsLate(dueDate, payDate), PenaltyMax)
     End Function
 
-    ''' <summary>Penalty on a quarter amount (₱125 due Jun 30 paid Oct 6 -> 4 months x 2% = ₱10.00).</summary>
-    Public Shared Function ComputePenalty(quarterAmount As Decimal, dueDate As Date, payDate As Date) As Decimal
-        Return Math.Round(quarterAmount * GetPenaltyRate(dueDate, payDate), 2, MidpointRounding.AwayFromZero)
+    ''' <summary>Penalty on an amount of principal unpaid until payDate (₱125 due Jun 30 paid Oct 6 -> 4 months x 2% = ₱10.00).</summary>
+    Public Shared Function ComputePenalty(principal As Decimal, dueDate As Date, payDate As Date) As Decimal
+        Return Math.Round(principal * GetPenaltyRate(dueDate, payDate), 2, MidpointRounding.AwayFromZero)
+    End Function
+
+    ''' <summary>
+    ''' THE PENALTY RULE (one place): penalty still due on a quarter on "asOf".
+    ''' Each peso of principal is charged the penalty rate for the months it stayed unpaid:
+    '''   principal paid by each earlier payment x the rate on that payment's date
+    ''' + principal still unpaid x the rate on asOf
+    ''' - penalty already paid.
+    ''' Example: ₱100 due Mar 31. Jun 15 (6%): ₱50 paid -> ₱6 penalty + ₱44 principal. Aug 10 (10%):
+    ''' 44 x 6% + 56 x 10% - 6 = ₱2.24 still due. Never below 0.
+    ''' </summary>
+    Public Shared Function ComputePenaltyDue(quarterAmount As Decimal, dueDate As Date,
+                                             payments As IEnumerable(Of RptPayment), asOf As Date) As Decimal
+        Dim charged = 0D
+        Dim principalPaid = 0D
+        Dim penaltyPaid = 0D
+        For Each p In payments
+            charged += ComputePenalty(p.AmountPaid, dueDate, p.PaymentDate)
+            principalPaid += p.AmountPaid
+            penaltyPaid += p.Penalty
+        Next
+        Dim remaining = Math.Max(0D, quarterAmount - principalPaid)
+        If remaining = 0D Then Return 0D               ' a fully paid quarter owes nothing more
+        charged += ComputePenalty(remaining, dueDate, asOf)
+        Return Math.Max(0D, charged - penaltyPaid)
+    End Function
+
+    ''' <summary>THE PAYMENT ORDER RULE (see PenaltyFirst): how a payment amount is split between penalty and principal.</summary>
+    Public Shared Function AllocatePayment(amount As Decimal, penaltyDue As Decimal, principalDue As Decimal) As PaymentSplit
+        Dim split As New PaymentSplit
+        amount = Math.Max(0D, amount)
+        If PenaltyFirst Then
+            split.ToPenalty = Math.Min(amount, penaltyDue)
+            split.ToPrincipal = Math.Min(amount - split.ToPenalty, principalDue)
+        Else
+            split.ToPrincipal = Math.Min(amount, principalDue)
+            split.ToPenalty = Math.Min(amount - split.ToPrincipal, penaltyDue)
+        End If
+        Return split
+    End Function
+
+    ''' <summary>Live numbers for paying "amount" on a quarter on "payDate" (nothing is saved).</summary>
+    Public Shared Function PreviewPayment(q As RptQuarter, payDate As Date, amount As Decimal) As PaymentPreview
+        Dim penaltyDue = ComputePenaltyDue(q.Amount, q.DueDate, q.Payments, payDate)
+        Dim preview As New PaymentPreview With {
+            .QuarterAmount = q.Amount, .AlreadyPaid = q.TotalPaid, .RemainingPrincipal = q.RemainingPrincipal,
+            .MonthsLate = GetMonthsLate(q.DueDate, payDate), .PenaltyRate = GetPenaltyRate(q.DueDate, payDate),
+            .PenaltyDue = penaltyDue, .TotalDue = q.RemainingPrincipal + penaltyDue, .Amount = amount
+        }
+        preview.Split = AllocatePayment(Math.Min(amount, preview.TotalDue), penaltyDue, q.RemainingPrincipal)
+        Return preview
     End Function
 
     ' ==================== Reading ====================
@@ -210,7 +406,7 @@ Public NotInheritable Class RptService
         Dim props = GetProperties(businessId)
         If props.Count = 0 Then Return New List(Of RptLedgerRow)
         Dim assessments = RptRepository.GetAssessmentsByBusinessId(businessId).Where(Function(a) a.TaxYear = taxYear).ToList()
-        Dim payments = RptRepository.GetPaymentsByBusinessId(businessId)
+        Dim payments = ActiveOnly(RptRepository.GetPaymentsByBusinessId(businessId))
         Return props.Select(
             Function(p)
                 Dim a = assessments.FirstOrDefault(Function(x) x.PropertyId = p.PropertyId)
@@ -221,11 +417,15 @@ Public NotInheritable Class RptService
             End Function).ToList()
     End Function
 
-    ''' <summary>Every quarter of every assessment of the business (all years), oldest first.</summary>
-    Public Shared Function GetAllQuarters(businessId As Integer) As List(Of RptQuarter)
+    ''' <summary>
+    ''' Every quarter of every assessment of the business (all years), oldest first.
+    ''' excludePaymentId: work it out as if that payment were voided (to preview a void).
+    ''' </summary>
+    Public Shared Function GetAllQuarters(businessId As Integer, Optional excludePaymentId As Integer = 0) As List(Of RptQuarter)
         Dim props = GetProperties(businessId)
         If props.Count = 0 Then Return New List(Of RptQuarter)
-        Dim payments = RptRepository.GetPaymentsByBusinessId(businessId)
+        Dim payments = ActiveOnly(RptRepository.GetPaymentsByBusinessId(businessId)).
+                       Where(Function(x) x.PaymentId <> excludePaymentId).ToList()
         Dim result As New List(Of RptQuarter)
         For Each a In RptRepository.GetAssessmentsByBusinessId(businessId).OrderBy(Function(x) x.TaxYear)
             Dim p = props.FirstOrDefault(Function(x) x.PropertyId = a.PropertyId)
@@ -234,39 +434,44 @@ Public NotInheritable Class RptService
         Return result
     End Function
 
+    Private Shared Function ActiveOnly(payments As List(Of RptPayment)) As List(Of RptPayment)
+        Return payments.Where(Function(x) Not x.IsVoided).ToList()
+    End Function
+
     Private Shared Function BuildQuarters(p As RealProperty, a As RptAssessment, payments As List(Of RptPayment)) As List(Of RptQuarter)
         Dim list As New List(Of RptQuarter)
         For quarterNo = 1 To 4
-            Dim q = quarterNo
-            Dim pay = payments.FirstOrDefault(Function(x) x.AssessmentId = a.AssessmentId AndAlso x.Quarter = q)
-            Dim due = StatusService.GetQuarterDueDate(a.TaxYear, q)
-            Dim amount = GetQuarterAmount(a.TotalDue, q)
-            list.Add(New RptQuarter With {
+            Dim qNo = quarterNo
+            Dim q As New RptQuarter With {
                 .AssessmentId = a.AssessmentId, .PropertyId = p.PropertyId, .Pin = p.Pin, .TaxYear = a.TaxYear,
-                .Quarter = q, .DueDate = due, .Amount = If(pay Is Nothing, amount, pay.AmountPaid), .Payment = pay,
-                .Status = StatusService.GetDueStatus(due, pay IsNot Nothing),
-                .Penalty = If(pay Is Nothing, ComputePenalty(amount, due, Date.Today), pay.Penalty)
-            })
+                .Quarter = qNo, .DueDate = StatusService.GetQuarterDueDate(a.TaxYear, qNo),
+                .Amount = GetQuarterAmount(a.TotalDue, qNo),
+                .Payments = payments.Where(Function(x) x.AssessmentId = a.AssessmentId AndAlso x.Quarter = qNo).
+                                     OrderBy(Function(x) x.PaymentId).ToList()
+            }
+            q.PenaltyDue = ComputePenaltyDue(q.Amount, q.DueDate, q.Payments, Date.Today)
+            q.Status = StatusService.GetQuarterStatus(q.DueDate, q.IsPaid, q.IsPartiallyPaid)
+            list.Add(q)
         Next
         Return list
     End Function
 
-    ''' <summary>Sum of the unpaid quarter amounts of the year's assessments (penalties not included).</summary>
+    ''' <summary>What is left to pay on the year's assessments if paid today (remaining principal + penalties).</summary>
     Public Shared Function GetTotalDue(businessId As Integer, taxYear As Integer) As Decimal
         Return GetLedger(businessId, taxYear).Sum(Function(r) r.Balance)
     End Function
 
-    ''' <summary>Unpaid quarters whose due date has passed (all years), oldest first.</summary>
+    ''' <summary>Quarters past their due date whose principal is not fully paid (all years), oldest first.</summary>
     Public Shared Function GetOverdueQuarters(businessId As Integer) As List(Of RptQuarter)
         Return GetAllQuarters(businessId).Where(Function(q) q.IsOverdue).ToList()
     End Function
 
-    ''' <summary>What the overdue quarters cost if paid today (tax + penalties).</summary>
+    ''' <summary>What the overdue quarters cost if paid today (remaining principal + penalties).</summary>
     Public Shared Function GetOverdueAmount(businessId As Integer) As Decimal
-        Return GetOverdueQuarters(businessId).Sum(Function(q) q.Amount + q.Penalty)
+        Return GetOverdueQuarters(businessId).Sum(Function(q) q.BalanceDue)
     End Function
 
-    ''' <summary>"Issued" when nothing past due is unpaid, otherwise "Not Issued".</summary>
+    ''' <summary>"Issued" when every quarter already due is fully paid, otherwise "Not Issued".</summary>
     Public Shared Function GetTaxClearanceStatus(businessId As Integer) As String
         Return If(GetOverdueQuarters(businessId).Count = 0, ClearanceIssued, ClearanceNotIssued)
     End Function
@@ -279,6 +484,36 @@ Public NotInheritable Class RptService
         End If
         Dim labels = overdue.Select(Function(q) q.Label).Distinct().ToList()
         Return overdue.Count & " overdue quarter" & If(overdue.Count = 1, "", "s") & ": " & String.Join(", ", labels)
+    End Function
+
+    ''' <summary>Every payment of a property (all years, voided ones too), newest first. Empty if the user may not see it.</summary>
+    Public Shared Function GetPaymentHistory(propertyId As Integer) As List(Of RptPayment)
+        Dim p = PropertyRepository.GetById(propertyId)
+        If p Is Nothing OrElse Not AccessService.CanSeeBusiness(p.BusinessId) Then Return New List(Of RptPayment)
+        Return RptRepository.GetPaymentsByBusinessId(p.BusinessId).
+               Where(Function(x) x.PropertyId = propertyId).
+               OrderByDescending(Function(x) x.PaymentDate).ThenByDescending(Function(x) x.PaymentId).ToList()
+    End Function
+
+    ''' <summary>Every payment of a business (all properties and years, voided ones too). Empty if the user may not see it.</summary>
+    Public Shared Function GetBusinessPayments(businessId As Integer) As List(Of RptPayment)
+        If Not AccessService.CanSeeBusiness(businessId) Then Return New List(Of RptPayment)
+        Return RptRepository.GetPaymentsByBusinessId(businessId)
+    End Function
+
+    ''' <summary>
+    ''' What was still owed on the payment's quarter right after it (for the receipt):
+    ''' replays the quarter's earlier active payments. assessmentPayments = payments of the same assessment.
+    ''' </summary>
+    Public Shared Function GetBalanceAfter(pay As RptPayment, assessmentPayments As IEnumerable(Of RptPayment),
+                                           annualTotal As Decimal) As Decimal
+        Dim earlier = assessmentPayments.Where(Function(x) Not x.IsVoided AndAlso x.Quarter = pay.Quarter AndAlso
+                                                           x.PaymentId < pay.PaymentId).ToList()
+        Dim amount = GetQuarterAmount(annualTotal, pay.Quarter)
+        Dim dueDate = StatusService.GetQuarterDueDate(pay.TaxYear, pay.Quarter)
+        Dim remaining = Math.Max(0D, amount - earlier.Sum(Function(x) x.AmountPaid))
+        Dim penaltyDue = ComputePenaltyDue(amount, dueDate, earlier, pay.PaymentDate)
+        Return Math.Max(0D, remaining + penaltyDue - pay.Total)
     End Function
 
     ' ==================== Properties ====================
@@ -389,32 +624,86 @@ Public NotInheritable Class RptService
         If row Is Nothing OrElse Not row.IsAssessed Then Return "Generate the assessment first."
         Dim q = row.Quarters.FirstOrDefault(Function(x) x.Quarter = quarter)
         If q Is Nothing Then Return "Choose a quarter from 1 to 4."
-        If q.IsPaid Then Return "Q" & quarter & " is already paid (" & q.Payment.OrNo & ")."
+        If q.IsPaid Then Return "Q" & quarter & " is already fully paid (" & q.LastPayment?.OrNo & ")."
         Dim nextQ = row.NextPayable
-        If nextQ IsNot Nothing AndAlso nextQ.Quarter < quarter Then Return "Pay Q" & nextQ.Quarter & " first (quarters are paid in order)."
+        If nextQ IsNot Nothing AndAlso nextQ.Quarter < quarter Then
+            Return "Pay Q" & nextQ.Quarter & " in full first (quarters are paid in order)."
+        End If
         If row.Assessment.TaxYear > Date.Today.Year Then
             Return row.Assessment.TaxYear & " payments start on Jan 1, " & row.Assessment.TaxYear & "."
         End If
         Return Nothing
     End Function
 
-    ''' <summary>Checks the payment date. Key: "date".</summary>
-    Public Shared Function ValidatePayment(row As RptLedgerRow, payDate As Date) As Dictionary(Of String, String)
+    ''' <summary>The earliest allowed payment date: Jan 1 of the tax year, or the last active payment of the bill.</summary>
+    Public Shared Function GetEarliestPaymentDate(row As RptLedgerRow) As Date
+        Dim jan1 = New Date(row.Assessment.TaxYear, 1, 1)
+        Dim last = row.ActivePayments.Select(Function(x) x.PaymentDate.Date).DefaultIfEmpty(jan1).Max()
+        Return If(last > jan1, last, jan1)
+    End Function
+
+    ''' <summary>
+    ''' Checks what the cashier typed. Keys: "date", "amount", "method", "reference", "or", "remarks".
+    ''' The OR number is checked against every payment (voided ones keep their number).
+    ''' </summary>
+    Public Shared Function ValidatePayment(row As RptLedgerRow, q As RptQuarter, input As RptPaymentInput) As Dictionary(Of String, String)
         Dim errors As New Dictionary(Of String, String)
-        If payDate.Date > Date.Today Then
-            errors("date") = "The payment date cannot be in the future."
-        ElseIf row IsNot Nothing AndAlso row.IsAssessed AndAlso payDate.Year < row.Assessment.TaxYear Then
-            errors("date") = "The payment date must be in " & row.Assessment.TaxYear & " or later."
+        Dim payDate = input.PaymentDate.Date
+
+        ' Date: not in the future, within the tax year or later, not before the bill's last payment
+        If payDate > Date.Today Then
+            errors("date") = "Cannot be in the future."
+        ElseIf row IsNot Nothing AndAlso row.IsAssessed AndAlso payDate < GetEarliestPaymentDate(row) Then
+            Dim earliest = GetEarliestPaymentDate(row)
+            errors("date") = If(Not row.ActivePayments.Any(), "Must be in " & row.Assessment.TaxYear & " or later.",
+                                "Not before " & UiHelper.FormatDate(earliest) & " (last payment).")
         End If
+
+        ' Amount: more than 0, whole centavos, at most what is due on that date
+        If input.Amount <= 0D Then
+            errors("amount") = "Enter more than 0."
+        ElseIf Math.Round(input.Amount, 2) <> input.Amount Then
+            errors("amount") = "At most 2 decimals."
+        ElseIf q IsNot Nothing AndAlso Not errors.ContainsKey("date") Then
+            Dim due = PreviewPayment(q, payDate, input.Amount).TotalDue
+            If input.Amount > due Then errors("amount") = "Balance is only " & UiHelper.FormatMoney(due) & "."
+        End If
+
+        ' Method + reference
+        If Not PaymentMethods.All.Contains(input.Method) Then
+            errors("method") = "Choose how it was paid."
+        ElseIf PaymentMethods.NeedsReference(input.Method) Then
+            Dim reference = If(input.ReferenceNo, "").Trim()
+            If reference = "" Then
+                errors("reference") = "Enter the " & If(input.Method = PaymentMethods.Check, "check number.", "transaction reference no.")
+            ElseIf reference.Length > MaxReferenceLength Then
+                errors("reference") = "At most " & MaxReferenceLength & " characters."
+            End If
+        End If
+
+        ' OR number from the AF 51 booklet
+        Dim orNo = If(input.OrNo, "").Trim()
+        If orNo = "" Then
+            errors("or") = "Type the AF 51 OR number."
+        ElseIf orNo.Length > MaxOrNoLength Then
+            errors("or") = "At most " & MaxOrNoLength & " characters."
+        ElseIf Not Text.RegularExpressions.Regex.IsMatch(orNo, "^[A-Za-z0-9-]+$") Then
+            errors("or") = "Letters, numbers, dashes only."
+        ElseIf RptRepository.OrNoExists(orNo) Then
+            errors("or") = "OR " & orNo & " already used."
+        End If
+
+        If If(input.Remarks, "").Trim().Length > MaxRemarksLength Then errors("remarks") = "At most " & MaxRemarksLength & " characters."
         Return errors
     End Function
 
     ''' <summary>
-    ''' Records a quarter's payment (Assessor / Admin): amount = the quarter's share, penalty if late,
-    ''' OR number generated, received by the logged-in user. When every quarter already due is paid,
-    ''' the RPT endorsement on the business permit application is set to Endorsed.
+    ''' Records a walk-in payment (Assessor / Admin) for the next unpaid quarter: the amount goes to the penalty due
+    ''' first, then to principal (AllocatePayment). received_by = the logged-in user. When no quarter already due is
+    ''' left unpaid afterwards, the RPT endorsement on the business permit application is set to Endorsed in the SAME
+    ''' transaction as the payment.
     ''' </summary>
-    Public Shared Function RecordPayment(assessmentId As Integer, quarter As Integer, payDate As Date) As RptPaymentResult
+    Public Shared Function RecordPayment(assessmentId As Integer, quarter As Integer, input As RptPaymentInput) As RptPaymentResult
         Dim result As New RptPaymentResult
         If Not AccessService.CanManage(AppScreen.RealPropertyTax) Then
             result.ErrorMessage = "You are not allowed to record payments."
@@ -428,33 +717,126 @@ Public NotInheritable Class RptService
         End If
         Dim row = GetLedger(p.BusinessId, a.TaxYear).FirstOrDefault(Function(r) r.RealProperty.PropertyId = p.PropertyId)
         result.ErrorMessage = GetPaymentBlocker(row, quarter)
-        If result.ErrorMessage Is Nothing Then
-            Dim errors = ValidatePayment(row, payDate)
-            If errors.Count > 0 Then result.ErrorMessage = errors.Values.First()
-        End If
         If result.ErrorMessage IsNot Nothing Then Return result
-
         Dim q = row.Quarters.First(Function(x) x.Quarter = quarter)
+        Dim errors = ValidatePayment(row, q, input)
+        If errors.Count > 0 Then
+            result.ErrorMessage = errors.Values.First()
+            Return result
+        End If
+
+        Dim preview = PreviewPayment(q, input.PaymentDate.Date, input.Amount)
         Dim pay As New RptPayment With {
-            .AssessmentId = assessmentId, .Quarter = quarter, .AmountPaid = q.Amount,
-            .Penalty = ComputePenalty(q.Amount, q.DueDate, payDate), .PaymentDate = payDate.Date,
-            .OrNo = ReferenceNoService.GetNext(ReferenceNoService.OfficialReceipt), .ReceivedBy = Session.UserId
+            .AssessmentId = assessmentId, .Quarter = quarter, .TaxYear = a.TaxYear, .PropertyId = p.PropertyId, .Pin = p.Pin,
+            .AmountPaid = preview.Split.ToPrincipal, .Penalty = preview.Split.ToPenalty,
+            .PaymentMethod = input.Method,
+            .ReferenceNo = If(PaymentMethods.NeedsReference(input.Method), input.ReferenceNo.Trim(), ""),
+            .OrNo = input.OrNo.Trim(), .PaymentDate = input.PaymentDate.Date, .ReceivedBy = Session.UserId,
+            .Remarks = If(input.Remarks, "").Trim(), .ReceivedByName = Session.FullName
         }
-        Dim newId = RptRepository.InsertPayment(pay)
-        If newId <= 0 Then
+
+        ' Will anything already due still be unpaid after this payment? If not, endorse RPT (same transaction).
+        Dim stillOverdue = GetOverdueQuarters(p.BusinessId).Any(
+            Function(o) Not (o.AssessmentId = assessmentId AndAlso o.Quarter = quarter AndAlso preview.CompletesQuarter))
+        Dim endorsement = If(stillOverdue, Nothing,
+                             BusinessPermitService.GetAutoEndorseChange(p.BusinessId, EndorsementOffices.RPT,
+                                                                        "RPT dues paid as of " & Date.Today.ToString("MMM d, yyyy")))
+
+        Dim newId = RptRepository.SavePayment(pay, row.ActivePayments.Count(), row.ActivePayments.Sum(Function(x) x.Total), endorsement)
+        If newId = 0 Then
+            result.ErrorMessage = "Another payment for this property was saved or voided while you were typing. " &
+                                  "Close this window and open Record Payment again."
+            Return result
+        ElseIf newId < 0 Then
             result.ErrorMessage = "The payment could not be saved."
             Return result
         End If
+
         pay.PaymentId = newId
         result.Payment = pay
-        AuditService.LogInsert(PaymentsTable, newId, pay.OrNo & ": " & q.Label & " PIN " & p.Pin & " " &
-                               UiHelper.FormatMoney(pay.AmountPaid) & If(pay.Penalty > 0, " + " & UiHelper.FormatMoney(pay.Penalty) & " penalty", ""))
-
-        If GetOverdueQuarters(p.BusinessId).Count = 0 Then
-            result.EndorsedReference = BusinessPermitService.AutoEndorse(p.BusinessId, EndorsementOffices.RPT,
-                                                                         "RPT dues paid as of " & Date.Today.ToString("MMM d, yyyy"))
+        AuditService.LogInsert(PaymentsTable, newId, "OR " & pay.OrNo & ": " & q.Label & " PIN " & p.Pin & " " &
+                               UiHelper.FormatMoney(pay.Total) & " (" & pay.PaymentMethod & If(pay.ReferenceNo <> "", " " & pay.ReferenceNo, "") &
+                               "; principal " & UiHelper.FormatMoney(pay.AmountPaid) & ", penalty " & UiHelper.FormatMoney(pay.Penalty) &
+                               If(preview.CompletesQuarter, "; quarter fully paid", "; " & UiHelper.FormatMoney(preview.RemainingAfter) & " left") & ")")
+        If endorsement IsNot Nothing Then
+            BusinessPermitService.LogEndorsementChange(endorsement)
+            result.EndorsedReference = endorsement.ReferenceNo
         End If
         Return result
+    End Function
+
+    ' ==================== Voiding ====================
+
+    ''' <summary>
+    ''' What voiding a payment would do, for the confirm step: the blocker (only Assessor / Admin, only the newest
+    ''' active payment of its bill), whether its quarter becomes overdue again, and what happens to the RPT endorsement.
+    ''' </summary>
+    Public Shared Function GetVoidImpact(paymentId As Integer) As VoidImpact
+        Dim impact As New VoidImpact
+        Dim pay = RptRepository.GetPaymentById(paymentId)
+        impact.Payment = pay
+        If pay Is Nothing Then
+            impact.Blocker = "Payment not found."
+            Return impact
+        End If
+        Dim prop = PropertyRepository.GetById(pay.PropertyId)
+        If Not AccessService.CanManage(AppScreen.RealPropertyTax) OrElse prop Is Nothing OrElse
+           Not AccessService.CanSeeBusiness(prop.BusinessId) Then
+            impact.Blocker = "Only the Assessor's Office or an Admin can void payments."
+            Return impact
+        End If
+        If pay.IsVoided Then
+            impact.Blocker = "OR " & pay.OrNo & " is already voided."
+            Return impact
+        End If
+        Dim newest = RptRepository.GetPaymentsByAssessmentId(pay.AssessmentId).Where(Function(x) Not x.IsVoided).
+                     OrderByDescending(Function(x) x.PaymentId).First()
+        If newest.PaymentId <> pay.PaymentId Then
+            impact.Blocker = "Only the newest payment of this " & pay.TaxYear & " bill can be voided. Void OR " & newest.OrNo &
+                             " (" & newest.QuarterLabel & ") first."
+            Return impact
+        End If
+
+        ' Does the quarter become overdue again?
+        Dim isQuarter As Func(Of RptQuarter, Boolean) = Function(q) q.AssessmentId = pay.AssessmentId AndAlso q.Quarter = pay.Quarter
+        Dim before = GetAllQuarters(prop.BusinessId).FirstOrDefault(isQuarter)
+        Dim after = GetAllQuarters(prop.BusinessId, pay.PaymentId).FirstOrDefault(isQuarter)
+        impact.BecomesOverdue = after IsNot Nothing AndAlso after.IsOverdue AndAlso Not (before?.IsOverdue).GetValueOrDefault()
+        If impact.BecomesOverdue Then
+            Dim latest = BusinessPermitService.GetLatestApplication(prop.BusinessId)
+            If latest IsNot Nothing AndAlso BusinessPermitService.IsFinal(latest.Status) Then
+                impact.FinalPermitWarning = "Business permit " & latest.ReferenceNo & " is already " & latest.Status &
+                                            ", so its RPT endorsement cannot go back to Pending."
+            Else
+                impact.Endorsement = BusinessPermitService.GetEndorsementResetChange(prop.BusinessId, EndorsementOffices.RPT,
+                    "OR " & pay.OrNo & " voided - " & pay.QuarterLabel & " is overdue again")
+            End If
+        End If
+        Return impact
+    End Function
+
+    ''' <summary>
+    ''' Voids a payment with a reason (Assessor / Admin). It is never deleted: it stays in the history as Voided,
+    ''' no longer counts toward the balance, and its OR number stays used. Returns an error message, or Nothing.
+    ''' </summary>
+    Public Shared Function VoidPayment(paymentId As Integer, reason As String) As String
+        reason = If(reason, "").Trim()
+        If reason = "" Then Return "Enter the reason for voiding."
+        If reason.Length > MaxVoidReasonLength Then Return "The reason can be at most " & MaxVoidReasonLength & " characters."
+        Dim impact = GetVoidImpact(paymentId)
+        If impact.Blocker IsNot Nothing Then Return impact.Blocker
+        Dim pay = impact.Payment
+
+        Select Case RptRepository.VoidPayment(pay, Session.UserId, reason, impact.Endorsement)
+            Case 0 : Return "Another payment of this property was recorded or voided meanwhile. Refresh (F5) and try again."
+            Case -1 : Return "The payment could not be voided."
+        End Select
+
+        AuditService.LogStatusChange(PaymentsTable, pay.PaymentId, Active, Voided,
+            "OR " & pay.OrNo & ", " & pay.QuarterLabel & " PIN " & pay.Pin & ", " & UiHelper.FormatMoney(pay.Total) & ": " & reason &
+            If(impact.FinalPermitWarning IsNot Nothing, " | Quarter overdue again; " & impact.FinalPermitWarning, ""))
+        If impact.Endorsement IsNot Nothing Then BusinessPermitService.LogEndorsementChange(impact.Endorsement)
+        Return Nothing
     End Function
 
 End Class

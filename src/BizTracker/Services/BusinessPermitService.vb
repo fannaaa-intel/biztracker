@@ -311,14 +311,46 @@ Public NotInheritable Class BusinessPermitService
     ''' Returns the application's reference number, or Nothing when there was nothing to endorse.
     ''' </summary>
     Public Shared Function AutoEndorse(businessId As Integer, office As String, remarks As String) As String
+        Dim change = GetAutoEndorseChange(businessId, office, remarks)
+        If change Is Nothing Then Return Nothing
+        If Not BusinessPermitRepository.SetEndorsement(change.PermitId, office, change.NewStatus, change.UserId, remarks) Then Return Nothing
+        LogEndorsementChange(change)
+        Return change.ReferenceNo
+    End Function
+
+    ''' <summary>
+    ''' The endorsement change AutoEndorse would make (Nothing = none: no open application, or already Endorsed).
+    ''' Nothing is saved, so a caller can save it inside its own transaction (BusinessPermitRepository.TxSetEndorsement).
+    ''' </summary>
+    Public Shared Function GetAutoEndorseChange(businessId As Integer, office As String, remarks As String) As EndorsementChange
         Dim p = GetLatestApplication(businessId)
         If p Is Nothing OrElse IsFinal(p.Status) Then Return Nothing
         Dim current = BusinessPermitRepository.GetEndorsements(p.PermitId).FirstOrDefault(Function(e) e.Office = office)
         If current Is Nothing OrElse current.Status = "Endorsed" Then Return Nothing
-        If Not BusinessPermitRepository.SetEndorsement(p.PermitId, office, "Endorsed", Session.UserId, remarks) Then Return Nothing
-        AuditService.Log(AuditActions.StatusChange, "clearance_endorsements", p.PermitId,
-                         office & " endorsement -> Endorsed automatically (" & p.ReferenceNo & "): " & remarks)
-        Return p.ReferenceNo
+        Return New EndorsementChange With {
+            .PermitId = p.PermitId, .ReferenceNo = p.ReferenceNo, .Office = office, .OldStatus = current.Status,
+            .NewStatus = "Endorsed", .UserId = Session.UserId, .Remarks = remarks}
     End Function
+
+    ''' <summary>
+    ''' The change that puts an Endorsed office back to Pending on the open application (e.g. an RPT payment was
+    ''' voided and dues are overdue again). Nothing when there is no open application or it is not Endorsed.
+    ''' </summary>
+    Public Shared Function GetEndorsementResetChange(businessId As Integer, office As String, remarks As String) As EndorsementChange
+        Dim p = GetLatestApplication(businessId)
+        If p Is Nothing OrElse IsFinal(p.Status) Then Return Nothing
+        Dim current = BusinessPermitRepository.GetEndorsements(p.PermitId).FirstOrDefault(Function(e) e.Office = office)
+        If current Is Nothing OrElse current.Status <> "Endorsed" Then Return Nothing
+        Return New EndorsementChange With {
+            .PermitId = p.PermitId, .ReferenceNo = p.ReferenceNo, .Office = office, .OldStatus = current.Status,
+            .NewStatus = "Pending", .UserId = Session.UserId, .Remarks = remarks}
+    End Function
+
+    ''' <summary>Audit row for an automatic endorsement change (after it was saved).</summary>
+    Public Shared Sub LogEndorsementChange(change As EndorsementChange)
+        AuditService.Log(AuditActions.StatusChange, "clearance_endorsements", change.PermitId,
+                         change.Office & " endorsement " & change.OldStatus & " -> " & change.NewStatus &
+                         " automatically (" & change.ReferenceNo & "): " & change.Remarks)
+    End Sub
 
 End Class

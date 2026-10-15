@@ -90,6 +90,8 @@ Public Class VerifyDocumentDialog
                 color = Theme.StatusAmber : soft = Theme.StatusAmberSoft : glyph = Icons.Warning : heading = "Genuine but expired"
             Case DocumentService.VerifyMismatch
                 color = Theme.StatusRed : soft = Theme.StatusRedSoft : glyph = Icons.Warning : heading = "Code does not match"
+            Case DocumentService.VerifyVoided
+                color = Theme.StatusRed : soft = Theme.StatusRedSoft : glyph = Icons.Close : heading = "Voided receipt"
             Case Else
                 color = Theme.StatusRed : soft = Theme.StatusRedSoft : glyph = Icons.Close : heading = "Not found"
         End Select

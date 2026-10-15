@@ -131,7 +131,7 @@ Public NotInheritable Class ReportService
     ''' </summary>
     Public Shared Function Print(d As IssuedDocument, Optional openInBrowser As Boolean = True) As PrintResult
         Dim result As New PrintResult
-        If d Is Nothing OrElse Not DocumentService.CanView() OrElse Not AccessService.CanSeeBusiness(d.BusinessId) Then
+        If Not DocumentService.CanPrint(d) Then
             result.ErrorMessage = "You are not allowed to print this document."
             Return result
         End If

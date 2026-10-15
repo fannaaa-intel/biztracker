@@ -5,7 +5,8 @@ Imports System.Drawing.Drawing2D
 '''   Toolbar  : business selector (staff) or the owner's business, and the actions (Assessor / Admin only)
 '''   Cards    : total due this year, overdue quarters, tax clearance, total assessed value
 '''   Left     : property ledger (year selector + search), Q1-Q4 payment status chips, overdue rows tinted red
-'''   Right    : selected property - quarter tracker and tabs (Quarters | Assessment | Important Dates)
+'''   Right    : selected property - quarter tracker and tabs (Quarters | Payments | Assessment | Important Dates)
+'''   Payments : every payment of the property (partial ones too) with Print Receipt and Void (Assessor / Admin)
 ''' No SQL here: everything goes through RptService / repositories.
 ''' </summary>
 Public Class RealPropertyTaxView
@@ -23,7 +24,25 @@ Public Class RealPropertyTaxView
         Public Property Quarters As String
         ''' <summary>Q1-Q4 statuses, or Nothing when the property is not assessed for the year.</summary>
         Public Property QuarterStatuses As String()
+        ''' <summary>Tooltip text per quarter ("Q2 Overdue (partially paid, P67.10 left)").</summary>
+        Public Property QuarterTips As String()
         Public Property IsOverdue As Boolean
+    End Class
+
+    ''' <summary>Payment history grid row (display only).</summary>
+    Private Class PaymentGridRow
+        Public Property PaymentId As Integer
+        Public Property PaymentDate As String
+        Public Property Quarter As String
+        Public Property OrNo As String
+        Public Property Method As String
+        Public Property Reference As String
+        Public Property Principal As String
+        Public Property Penalty As String
+        Public Property Total As String
+        Public Property ReceivedBy As String
+        Public Property Status As String
+        Public Property IsVoided As Boolean
     End Class
 
     ' Toolbar
@@ -55,6 +74,14 @@ Public Class RealPropertyTaxView
     Private ReadOnly quarterList As New WheelScrollPanel()
     Private ReadOnly assessmentList As New WheelScrollPanel()
     Private ReadOnly datesList As New WheelScrollPanel()
+    Private ReadOnly paymentsPage As New Panel()
+    Private ReadOnly paymentGrid As New ModernGrid()
+    Private ReadOnly lblPaymentsInfo As New Label()
+    Private ReadOnly lblPaymentsEmpty As New Label()
+    Private ReadOnly btnPrintReceipt As New Button()
+    Private ReadOnly btnVoid As New Button()
+    Private history As New List(Of RptPayment)
+    Private loadingPayments As Boolean
     Private ReadOnly detailBody As New Panel()
     Private ReadOnly detailContent As New Panel()
     Private ReadOnly lblDetailEmpty As New Label()
@@ -280,8 +307,7 @@ Public Class RealPropertyTaxView
         If e.ColumnIndex < 0 OrElse grid.Columns(e.ColumnIndex).Name <> "Quarters" Then Return
         Dim data = RowData(e.RowIndex)
         If data Is Nothing Then Return
-        e.ToolTipText = If(data.QuarterStatuses Is Nothing, "No " & TaxYear & " assessment yet",
-                           String.Join("  ·  ", data.QuarterStatuses.Select(Function(st, i) "Q" & (i + 1) & " " & st)))
+        e.ToolTipText = If(data.QuarterTips Is Nothing, "No " & TaxYear & " assessment yet", String.Join("  ·  ", data.QuarterTips))
     End Sub
 
     Private Function BuildDetailCard() As Control
@@ -312,7 +338,7 @@ Public Class RealPropertyTaxView
         Dim gap1 As New Panel With {.Dock = DockStyle.Top, .Height = 6, .BackColor = Color.White}
 
         tabs.Dock = DockStyle.Top
-        tabs.Tabs = {"Quarters", "Assessment", "Important Dates"}
+        tabs.Tabs = {"Quarters", "Payments", "Assessment", "Important Dates"}
         AddHandler tabs.SelectedIndexChanged, Sub() ShowTab()
         AddHandler tabs.Resize, Sub() SetTabLabels()
         Dim gap2 As New Panel With {.Dock = DockStyle.Top, .Height = 8, .BackColor = Color.White}
@@ -323,7 +349,8 @@ Public Class RealPropertyTaxView
             list.Dock = DockStyle.Fill
             list.BackColor = Color.White
         Next
-        detailBody.Controls.AddRange({quarterList, assessmentList, datesList})
+        BuildPaymentsPage()
+        detailBody.Controls.AddRange({quarterList, paymentsPage, assessmentList, datesList})
 
         lblDetailEmpty.Dock = DockStyle.Fill
         lblDetailEmpty.TextAlign = ContentAlignment.MiddleCenter
@@ -344,10 +371,10 @@ Public Class RealPropertyTaxView
         Return card
     End Function
 
-    ''' <summary>"Important Dates" becomes "Dates" when the detail card is narrow.</summary>
+    ''' <summary>"Important Dates" becomes "Dates" when the detail card is narrow (4 tabs share the width).</summary>
     Private Sub SetTabLabels()
-        Dim narrow = tabs.Width < CInt(330 * DeviceDpi / 96.0)
-        Dim labels = {"Quarters", "Assessment", If(narrow, "Dates", "Important Dates")}
+        Dim narrow = tabs.Width < CInt(440 * DeviceDpi / 96.0)
+        Dim labels = {"Quarters", "Payments", "Assessment", If(narrow, "Dates", "Important Dates")}
         If Not labels.SequenceEqual(tabs.Tabs) Then
             Dim index = tabs.SelectedIndex
             tabs.Tabs = labels
@@ -406,6 +433,8 @@ Public Class RealPropertyTaxView
                 .AssessedValue = UiHelper.FormatMoney(r.RealProperty.AssessedValue),
                 .Quarters = If(r.IsAssessed, "Q1 Q2 Q3 Q4", RptService.NotAssessed),
                 .QuarterStatuses = If(r.IsAssessed, r.Quarters.Select(Function(q) q.Status).ToArray(), Nothing),
+                .QuarterTips = If(r.IsAssessed, r.Quarters.Select(Function(q) "Q" & q.Quarter & " " & q.Status &
+                                                                     If(q.IsPartiallyPaid, " (" & q.PartialNote & ")", "")).ToArray(), Nothing),
                 .IsOverdue = r.WorstStatus = StatusService.Overdue
             }).ToList()
 
@@ -459,7 +488,7 @@ Public Class RealPropertyTaxView
         Dim year = TaxYear
         Dim assessed = ledger.Where(Function(r) r.IsAssessed).ToList()
 
-        ' Total due this year (unpaid quarters, penalties not included)
+        ' Total due this year: remaining principal + penalties if paid today
         Dim totalDue = ledger.Sum(Function(r) r.Balance)
         If assessed.Count = 0 Then
             cardDue.SetValue(UiHelper.FormatMoney(0D), "", If(ledger.Count = 0, "no properties on record", "no " & year & " assessment yet"))
@@ -468,7 +497,8 @@ Public Class RealPropertyTaxView
         Else
             Dim unpaid = assessed.SelectMany(Function(r) r.Quarters).Where(Function(q) Not q.IsPaid).ToList()
             Dim worst = If(unpaid.Any(Function(q) q.IsOverdue), StatusService.Overdue,
-                           If(unpaid.Any(Function(q) q.Status = StatusService.DueSoon), StatusService.DueSoon, StatusService.NotYetDue))
+                           If(unpaid.Any(Function(q) q.Status = StatusService.DueSoon), StatusService.DueSoon,
+                              If(unpaid.Any(Function(q) q.IsPartiallyPaid), StatusService.PartiallyPaid, StatusService.NotYetDue)))
             Dim nextDue = unpaid.Where(Function(q) Not q.IsOverdue).OrderBy(Function(q) q.DueDate).FirstOrDefault()
             cardDue.SetValue(UiHelper.FormatMoney(totalDue), worst,
                              If(worst = StatusService.Overdue OrElse nextDue Is Nothing, "for " & year, "due " & nextDue.DueDate.ToString("MMM d")))
@@ -480,8 +510,9 @@ Public Class RealPropertyTaxView
             cardOverdue.SetValue("None", If(assessed.Count > 0 OrElse ledger.Count > 0, StatusService.Paid, ""), "nothing past due")
         Else
             ' Amount if paid today (tax + penalties)
-            cardOverdue.SetValue(UiHelper.FormatMoney(overdue.Sum(Function(q) q.Amount + q.Penalty)), StatusService.Overdue,
-                                 overdue.Count & " quarter" & If(overdue.Count = 1, "", "s"))
+            Dim partly = overdue.Where(Function(q) q.IsPartiallyPaid).Count()
+            cardOverdue.SetValue(UiHelper.FormatMoney(overdue.Sum(Function(q) q.BalanceDue)), StatusService.Overdue,
+                                 overdue.Count & " quarter" & If(overdue.Count = 1, "", "s") & If(partly > 0, " · " & partly & " partly paid", ""))
         End If
 
         ' Tax clearance (all years)
@@ -558,6 +589,7 @@ Public Class RealPropertyTaxView
         tracker.CurrentStep = If(selected.IsAssessed, selected.Quarters.TakeWhile(Function(q) q.IsPaid).Count(), -1)   ' -1 = all gray
 
         quarterList.SetRows(CreateQuarterRows())
+        LoadPaymentHistory()
         assessmentList.SetRows(CreateAssessmentRows())
         datesList.SetRows(CreateDateRows())
         ShowTab()
@@ -565,8 +597,9 @@ Public Class RealPropertyTaxView
 
     Private Sub ShowTab()
         quarterList.Visible = tabs.SelectedIndex = 0
-        assessmentList.Visible = tabs.SelectedIndex = 1
-        datesList.Visible = tabs.SelectedIndex = 2
+        paymentsPage.Visible = tabs.SelectedIndex = 1
+        assessmentList.Visible = tabs.SelectedIndex = 2
+        datesList.Visible = tabs.SelectedIndex = 3
         detailBody.PerformLayout()
     End Sub
 
@@ -587,11 +620,18 @@ Public Class RealPropertyTaxView
             Dim detailColor As Color = Nothing
             Dim links As New List(Of RowLink)
             If q.IsPaid Then
-                detail = UiHelper.FormatMoney(q.Payment.AmountPaid + q.Payment.Penalty) & " · " & q.Payment.OrNo & " · paid " &
-                         ShortDate(q.Payment.PaymentDate) & If(q.Payment.Penalty > 0, " (incl. " & UiHelper.FormatMoney(q.Payment.Penalty) & " penalty)", "")
+                Dim last = q.LastPayment
+                detail = UiHelper.FormatMoney(q.TotalPaid) & " · " &
+                         If(q.Payments.Count = 1, "OR " & last.OrNo, q.Payments.Count & " payments, last OR " & last.OrNo) &
+                         " · paid " & ShortDate(last.PaymentDate) &
+                         If(q.PenaltyPaid > 0, " (incl. " & UiHelper.FormatMoney(q.PenaltyPaid) & " penalty)", "")
             Else
                 ' Short enough to sit next to the badge and the link; the breakdown is in the payment dialog
-                detail = If(q.Penalty > 0, UiHelper.FormatMoney(q.Amount + q.Penalty) & " with penalty", UiHelper.FormatMoney(q.Amount))
+                If q.IsPartiallyPaid Then
+                    detail = UiHelper.FormatMoney(q.BalanceDue) & " left · " & UiHelper.FormatMoney(q.TotalPaid) & " paid"
+                Else
+                    detail = If(q.PenaltyDue > 0, UiHelper.FormatMoney(q.BalanceDue) & " with penalty", UiHelper.FormatMoney(q.Amount))
+                End If
                 If q.IsOverdue Then detailColor = Theme.StatusRed
                 If canManage AndAlso nextQ IsNot Nothing AndAlso nextQ.Quarter = q.Quarter AndAlso
                    RptService.GetPaymentBlocker(selected, q.Quarter) Is Nothing Then
@@ -603,7 +643,7 @@ Public Class RealPropertyTaxView
         Dim overdue = selected.Quarters.Where(Function(q) q.IsOverdue).ToList()
         If overdue.Count > 0 Then
             rows.Add(NoteRow(tips, overdue.Count & " overdue quarter" & If(overdue.Count = 1, "", "s") & ": " &
-                             UiHelper.FormatMoney(overdue.Sum(Function(q) q.Amount + q.Penalty)) & " if paid today. " &
+                             UiHelper.FormatMoney(overdue.Sum(Function(q) q.BalanceDue)) & " if paid today. " &
                              If(canManage, "Quarters are paid in order.", "Please settle at the Municipal Treasurer's Office."), Theme.StatusRed))
         ElseIf nextQ Is Nothing Then
             rows.Add(NoteRow(tips, "All " & year & " quarters are paid.", Theme.StatusGreen))
@@ -630,11 +670,13 @@ Public Class RealPropertyTaxView
             rows.Add(HeadingRow(year & " assessment"))
             rows.Add(InfoRow(tips, basicLabel, UiHelper.FormatMoney(a.BasicTax), sefLabel, UiHelper.FormatMoney(a.SefTax)))
             rows.Add(InfoRow(tips, "Annual tax", UiHelper.FormatMoney(a.TotalDue), "Per quarter", UiHelper.FormatMoney(RptService.GetQuarterAmount(a.TotalDue, 1))))
-            rows.Add(InfoRow(tips, "Paid so far", UiHelper.FormatMoney(selected.PaidAmount), "Balance", UiHelper.FormatMoney(selected.Balance)))
-            Dim penalties = selected.Quarters.Where(Function(q) Not q.IsPaid).Sum(Function(q) q.Penalty)
+            rows.Add(InfoRow(tips, "Tax paid so far", UiHelper.FormatMoney(selected.PrincipalPaid),
+                             "Penalties paid", UiHelper.FormatMoney(selected.PenaltyPaid)))
+            Dim penalties = selected.Quarters.Sum(Function(q) q.PenaltyDue)
+            rows.Add(InfoRow(tips, "Balance (if paid today)", UiHelper.FormatMoney(selected.Balance),
+                             "Of which penalties", UiHelper.FormatMoney(penalties)))
             If penalties > 0 Then
-                rows.Add(NoteRow(tips, "Penalties if paid today: " & UiHelper.FormatMoney(penalties) & " (balance with penalties " &
-                                 UiHelper.FormatMoney(selected.Balance + penalties) & ").", Theme.StatusRed))
+                rows.Add(NoteRow(tips, "Penalties are charged only on the tax still unpaid, for the months it stayed unpaid.", Theme.StatusRed))
             End If
             If a.TotalDue <> RptService.ComputeTax(p.AssessedValue).TotalDue Then
                 rows.Add(NoteRow(tips, "The assessed value changed after this assessment was generated. The " & year &
@@ -671,7 +713,7 @@ Public Class RealPropertyTaxView
         Next
         rows.Add(NoteRow(tips, "Late payments: " & (RptService.PenaltyRateMonthly * 100D).ToString("0.##") & "% per month (a part of a month counts), up to " &
                          (RptService.PenaltyMax * 100D).ToString("0.##") & "%.", Theme.TextMuted))
-        rows.Add(NoteRow(tips, "Tax Clearance is issued only when every quarter already due is paid; it endorses RPT on the business permit.", Theme.TextMuted))
+        rows.Add(NoteRow(tips, "Tax Clearance is issued only when every quarter already due is fully paid; it endorses RPT on the business permit.", Theme.TextMuted))
         Return rows
     End Function
 
@@ -747,21 +789,265 @@ Public Class RealPropertyTaxView
             result = dlg.Result
         End Using
         LoadLedger(propertyId)
-        tabs.SelectedIndex = 0
+        tabs.SelectedIndex = 1          ' Payments: the new payment is at the top, ready to print
+        SelectPayment(result.Payment.PaymentId)
 
         Dim pay = result.Payment
-        Dim message = pay.OrNo & " recorded: " & UiHelper.FormatMoney(pay.AmountPaid + pay.Penalty) &
-                      If(pay.Penalty > 0, " (" & UiHelper.FormatMoney(pay.AmountPaid) & " + " & UiHelper.FormatMoney(pay.Penalty) & " penalty)", "") & "."
+        Dim paidQuarter = selected?.Quarters.FirstOrDefault(Function(q) q.AssessmentId = pay.AssessmentId AndAlso q.Quarter = pay.Quarter)
+        Dim message = "OR " & pay.OrNo & " recorded: " & UiHelper.FormatMoney(pay.Total) &
+                      If(pay.Penalty > 0, " (" & UiHelper.FormatMoney(pay.Penalty) & " penalty + " & UiHelper.FormatMoney(pay.AmountPaid) & " tax)", "") & "." &
+                      vbCrLf & If(paidQuarter Is Nothing OrElse paidQuarter.IsPaid, pay.QuarterLabel & " is now fully paid.",
+                                  UiHelper.FormatMoney(paidQuarter.BalanceDue) & " of " & pay.QuarterLabel & " is still due (partial payment).")
         If result.EndorsedReference IsNot Nothing Then
             message &= vbCrLf & "All due quarters are paid. The RPT endorsement of " & result.EndorsedReference & " is now Endorsed."
         ElseIf RptService.GetTaxClearanceStatus(businessId) = RptService.ClearanceIssued Then
             message &= vbCrLf & "All due quarters are paid - the Tax Clearance is Issued."
         End If
         Dim upcoming = selected?.NextPayable
-        message &= vbCrLf & If(upcoming Is Nothing, "All " & TaxYear & " quarters are now paid.",
-                               "Next: " & upcoming.Label & " (" & UiHelper.FormatMoney(upcoming.Amount) & ") is " &
-                               If(upcoming.IsOverdue, "overdue since ", "due ") & UiHelper.FormatDate(upcoming.DueDate) & ".")
+        If upcoming Is Nothing Then
+            message &= vbCrLf & "All " & TaxYear & " quarters are now paid."
+        ElseIf paidQuarter IsNot Nothing AndAlso paidQuarter.IsPaid Then
+            message &= vbCrLf & "Next: " & upcoming.Label & " (" & UiHelper.FormatMoney(upcoming.BalanceDue) & ") is " &
+                       If(upcoming.IsOverdue, "overdue since ", "due ") & UiHelper.FormatDate(upcoming.DueDate) & "."
+        End If
+        message &= vbCrLf & "Click ""Print Receipt"" in the Payments tab for a printed copy."
         UiHelper.ShowSuccess(message, "Payment recorded")
+    End Sub
+
+    ' =====================================================================
+    '  Payments tab: history of the selected property, Print Receipt, Void
+    ' =====================================================================
+
+    Private Sub BuildPaymentsPage()
+        paymentsPage.Dock = DockStyle.Fill
+        paymentsPage.BackColor = Color.White
+
+        Dim bar As New Panel With {.Dock = DockStyle.Top, .Height = Dpi(44), .BackColor = Color.White}
+        lblPaymentsInfo.Font = Theme.SmallBoldFont
+        lblPaymentsInfo.ForeColor = Theme.TextMuted
+        lblPaymentsInfo.AutoEllipsis = True
+        lblPaymentsInfo.TextAlign = ContentAlignment.MiddleLeft
+        lblPaymentsInfo.BackColor = Color.White
+        btnPrintReceipt.Text = "Print Receipt"
+        UiHelper.StyleSecondaryButton(btnPrintReceipt)
+        btnVoid.Text = "Void"
+        UiHelper.StyleDangerButton(btnVoid)
+        btnVoid.Visible = canManage
+        AddHandler btnPrintReceipt.Click, AddressOf PrintReceipt_Click
+        AddHandler btnVoid.Click, AddressOf VoidPayment_Click
+        bar.Controls.AddRange({lblPaymentsInfo, btnPrintReceipt, btnVoid})
+        AddHandler bar.Layout,
+            Sub()
+                Dim h = Dpi(34)
+                Dim top = (bar.ClientSize.Height - h) \ 2
+                Dim right = bar.ClientSize.Width
+                If btnVoid.Visible Then
+                    Dim w = UiHelper.TextWidth(btnVoid.Text, Theme.BodyBoldFont) + Dpi(30)
+                    btnVoid.SetBounds(right - w, top, w, h)
+                    right = btnVoid.Left - Dpi(8)
+                End If
+                Dim pw = UiHelper.TextWidth(btnPrintReceipt.Text, Theme.BodyBoldFont) + Dpi(30)
+                btnPrintReceipt.SetBounds(right - pw, top, pw, h)
+                lblPaymentsInfo.SetBounds(0, top, Math.Max(0, btnPrintReceipt.Left - Dpi(10)), h)
+            End Sub
+
+        UiHelper.StyleGrid(paymentGrid, "Status")
+        paymentGrid.Dock = DockStyle.Fill
+        UiHelper.AddGridColumn(paymentGrid, "PaymentDate", "DATE", "PaymentDate", 95, 70)
+        UiHelper.AddGridColumn(paymentGrid, "Quarter", "QUARTER", "Quarter", 85, 85)
+        UiHelper.AddGridColumn(paymentGrid, "OrNo", "OR NO.", "OrNo", 85, 85)
+        UiHelper.AddGridColumn(paymentGrid, "Method", "METHOD", "Method", 95, 95)
+        UiHelper.AddGridColumn(paymentGrid, "Reference", "REFERENCE", "Reference", 120, 110)
+        UiHelper.AddGridColumn(paymentGrid, "Principal", "TAX", "Principal", 85, 85)
+        UiHelper.AddGridColumn(paymentGrid, "Penalty", "PENALTY", "Penalty", 80, 80)
+        UiHelper.AddGridColumn(paymentGrid, "Total", "TOTAL", "Total", 90, 90)
+        UiHelper.AddGridColumn(paymentGrid, "ReceivedBy", "RECEIVED BY", "ReceivedBy", 130, 120)
+        UiHelper.AddGridColumn(paymentGrid, "Status", "STATUS", "Status", 90, UiHelper.TextWidth(RptService.Voided, Theme.SmallBoldFont) + 36)
+        For Each colName In {"Principal", "Penalty", "Total"}
+            paymentGrid.Columns(colName).DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight
+            paymentGrid.Columns(colName).HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight
+        Next
+        AddHandler paymentGrid.SelectionChanged, Sub() If Not loadingPayments Then UpdatePaymentButtons()
+        AddHandler paymentGrid.CellToolTipTextNeeded, AddressOf PaymentGrid_CellToolTipTextNeeded
+        AddHandler paymentGrid.CellDoubleClick, Sub(s, e) If e.RowIndex >= 0 Then PrintReceipt_Click(Nothing, EventArgs.Empty)
+        AddHandler paymentGrid.Resize, Sub() FitPaymentColumns()
+
+        lblPaymentsEmpty.Dock = DockStyle.Fill
+        lblPaymentsEmpty.TextAlign = ContentAlignment.MiddleCenter
+        lblPaymentsEmpty.Font = Theme.BodyFont
+        lblPaymentsEmpty.ForeColor = Theme.TextMuted
+        lblPaymentsEmpty.BackColor = Color.White
+        lblPaymentsEmpty.Visible = False
+
+        paymentsPage.Controls.Add(lblPaymentsEmpty)
+        paymentsPage.Controls.Add(paymentGrid)
+        paymentsPage.Controls.Add(bar)
+    End Sub
+
+    ''' <summary>Hides the less important columns when the card is narrow (date, quarter, OR, total and status always stay).</summary>
+    Private Sub FitPaymentColumns()
+        Dim s = DeviceDpi / 96.0
+        Dim w = paymentGrid.Width
+        paymentGrid.Columns("Principal").Visible = w >= 560 * s
+        paymentGrid.Columns("Penalty").Visible = w >= 640 * s
+        paymentGrid.Columns("Method").Visible = w >= 735 * s
+        paymentGrid.Columns("ReceivedBy").Visible = w >= 855 * s
+        paymentGrid.Columns("Reference").Visible = w >= 965 * s
+    End Sub
+
+    Private Sub LoadPaymentHistory()
+        history = If(selected Is Nothing, New List(Of RptPayment)(), RptService.GetPaymentHistory(selected.RealProperty.PropertyId))
+        Dim rows = history.Select(Function(x) New PaymentGridRow With {
+            .PaymentId = x.PaymentId, .PaymentDate = PaymentDateText(x.PaymentDate), .Quarter = x.QuarterLabel,
+            .OrNo = x.OrNo, .Method = x.PaymentMethod, .Reference = If(x.ReferenceNo = "", "—", x.ReferenceNo),
+            .Principal = UiHelper.FormatMoney(x.AmountPaid), .Penalty = UiHelper.FormatMoney(x.Penalty),
+            .Total = UiHelper.FormatMoney(x.Total), .ReceivedBy = If(x.ReceivedByName = "", "—", x.ReceivedByName),
+            .Status = If(x.IsVoided, RptService.Voided, StatusService.Paid), .IsVoided = x.IsVoided
+        }).ToList()
+        ' The date column is as wide as its longest date (dates are never cut)
+        paymentGrid.Columns("PaymentDate").MinimumWidth =
+            Math.Max(Dpi(70), rows.Select(Function(r) UiHelper.TextWidth(r.PaymentDate, Theme.BodyFont) + Dpi(22)).DefaultIfEmpty(0).Max())
+        loadingPayments = True
+        paymentGrid.DataSource = rows
+        For Each gridRow As DataGridViewRow In paymentGrid.Rows
+            If TryCast(gridRow.DataBoundItem, PaymentGridRow)?.IsVoided Then gridRow.DefaultCellStyle.ForeColor = Theme.TextMuted
+        Next
+        FitPaymentColumns()
+        paymentGrid.ClearSelection()
+        If paymentGrid.Rows.Count > 0 Then
+            paymentGrid.CurrentCell = paymentGrid.Rows(0).Cells("PaymentDate")
+            paymentGrid.Rows(0).Selected = True
+        End If
+        loadingPayments = False
+
+        Dim active = history.Where(Function(x) Not x.IsVoided).ToList()
+        Dim voidedCount = history.Count - active.Count
+        lblPaymentsInfo.Text = If(history.Count = 0, "",
+            active.Count & " payment" & If(active.Count = 1, "", "s") & " · " & UiHelper.FormatMoney(active.Sum(Function(x) x.Total)) & " collected" &
+            If(voidedCount > 0, " · " & voidedCount & " voided", ""))
+        tips.SetToolTip(lblPaymentsInfo, lblPaymentsInfo.Text)
+        lblPaymentsEmpty.Visible = history.Count = 0
+        lblPaymentsEmpty.Text = "No payments recorded for this property yet." &
+                                If(canManage, vbCrLf & "Use ""Record Payment"" when the owner pays at the counter.", "")
+        If lblPaymentsEmpty.Visible Then lblPaymentsEmpty.BringToFront()
+        UpdatePaymentButtons()
+    End Sub
+
+    ''' <summary>"Jun 25" for this year's payments, "Jan 5, 2025" for older ones (the quarter column shows the tax year).</summary>
+    Private Shared Function PaymentDateText(value As Date) As String
+        Return If(value.Year = Date.Today.Year, value.ToString("MMM d"), UiHelper.FormatDate(value))
+    End Function
+
+    Private ReadOnly Property SelectedPayment As RptPayment
+        Get
+            If paymentGrid.SelectedRows.Count = 0 Then Return Nothing
+            Dim gridRow = TryCast(paymentGrid.SelectedRows(0).DataBoundItem, PaymentGridRow)
+            Return If(gridRow Is Nothing, Nothing, history.FirstOrDefault(Function(x) x.PaymentId = gridRow.PaymentId))
+        End Get
+    End Property
+
+    Private Sub SelectPayment(paymentId As Integer)
+        For Each gridRow As DataGridViewRow In paymentGrid.Rows
+            If TryCast(gridRow.DataBoundItem, PaymentGridRow)?.PaymentId = paymentId Then
+                paymentGrid.ClearSelection()
+                paymentGrid.CurrentCell = gridRow.Cells("PaymentDate")
+                gridRow.Selected = True
+                Exit For
+            End If
+        Next
+        UpdatePaymentButtons()
+    End Sub
+
+    Private Sub UpdatePaymentButtons()
+        Dim pay = SelectedPayment
+        UiHelper.SetAvailable(btnPrintReceipt,
+            If(pay Is Nothing, "Select a payment in the list first.",
+               If(pay.IsVoided, "OR " & pay.OrNo & " was voided - a voided receipt cannot be printed.", Nothing)))
+        tips.SetToolTip(btnPrintReceipt, "Print the official receipt of the selected payment")
+        If Not canManage Then Return
+        Dim blocker As String = Nothing
+        If pay Is Nothing Then
+            blocker = "Select a payment in the list first."
+        ElseIf pay.IsVoided Then
+            blocker = "OR " & pay.OrNo & " is already voided."
+        Else
+            Dim newest = history.Where(Function(x) x.AssessmentId = pay.AssessmentId AndAlso Not x.IsVoided).
+                         OrderByDescending(Function(x) x.PaymentId).First()
+            If newest.PaymentId <> pay.PaymentId Then
+                blocker = "Only the newest payment of the " & pay.TaxYear & " bill can be voided - void OR " & newest.OrNo & " first."
+            End If
+        End If
+        UiHelper.SetAvailable(btnVoid, blocker)
+        tips.SetToolTip(btnVoid, "Void the selected payment (mistake correction) - it stays in the history")
+    End Sub
+
+    Private Sub PaymentGrid_CellToolTipTextNeeded(sender As Object, e As DataGridViewCellToolTipTextNeededEventArgs)
+        If e.RowIndex < 0 OrElse e.RowIndex >= paymentGrid.Rows.Count Then Return
+        Dim gridRow = TryCast(paymentGrid.Rows(e.RowIndex).DataBoundItem, PaymentGridRow)
+        Dim pay = If(gridRow Is Nothing, Nothing, history.FirstOrDefault(Function(x) x.PaymentId = gridRow.PaymentId))
+        If pay Is Nothing Then Return
+        Dim lines As New List(Of String) From {
+            "OR " & pay.OrNo & " · " & pay.QuarterLabel & " · " & UiHelper.FormatDate(pay.PaymentDate),
+            UiHelper.FormatMoney(pay.AmountPaid) & " tax + " & UiHelper.FormatMoney(pay.Penalty) & " penalty = " & UiHelper.FormatMoney(pay.Total),
+            pay.PaymentMethod & If(pay.ReferenceNo <> "", " · Ref. " & pay.ReferenceNo, "") &
+                If(pay.ReceivedByName <> "", " · received by " & pay.ReceivedByName, "")
+        }
+        If pay.Remarks <> "" Then lines.Add("Remarks: " & pay.Remarks)
+        If pay.IsVoided Then
+            lines.Add("VOIDED " & UiHelper.FormatDate(pay.VoidedAt) & If(pay.VoidedByName <> "", " by " & pay.VoidedByName, "") & ": " & pay.VoidReason)
+        End If
+        e.ToolTipText = String.Join(vbCrLf, lines)
+    End Sub
+
+    Private Sub PrintReceipt_Click(sender As Object, e As EventArgs)
+        Dim pay = SelectedPayment
+        If pay Is Nothing Then Return
+        Dim doc = DocumentService.GetOfficialReceipt(pay.PaymentId)
+        Dim blocker = If(doc Is Nothing, "This receipt is not available.", DocumentService.GetPrintBlocker(doc))
+        If blocker IsNot Nothing Then
+            UiHelper.ShowWarning(blocker, "Cannot print")
+            Return
+        End If
+        Dim printed = ReportService.Print(doc)
+        If printed.ErrorMessage IsNot Nothing Then UiHelper.ShowWarning(printed.ErrorMessage, "Cannot print")
+    End Sub
+
+    Private Sub VoidPayment_Click(sender As Object, e As EventArgs)
+        Dim pay = SelectedPayment
+        If pay Is Nothing OrElse Not canManage Then Return
+        Dim impact = RptService.GetVoidImpact(pay.PaymentId)
+        If impact.Blocker IsNot Nothing Then
+            UiHelper.ShowWarning(impact.Blocker, "Cannot void")
+            Return
+        End If
+
+        ' Confirm first, saying exactly what will happen
+        Dim message = "OR " & pay.OrNo & " · " & pay.QuarterLabel & " · " & UiHelper.FormatMoney(pay.Total) & " paid " &
+                      UiHelper.FormatDate(pay.PaymentDate) & vbCrLf &
+                      "It stays in the history as Voided, no longer counts toward the balance, and its OR number stays used."
+        If impact.BecomesOverdue Then message &= vbCrLf & pay.QuarterLabel & " becomes OVERDUE again."
+        If impact.Endorsement IsNot Nothing Then
+            message &= vbCrLf & "The RPT endorsement of " & impact.Endorsement.ReferenceNo & " goes back to Pending."
+        End If
+        If impact.FinalPermitWarning IsNot Nothing Then message &= vbCrLf & vbCrLf & "WARNING: " & impact.FinalPermitWarning
+        If Not UiHelper.Confirm(message, "Void OR " & pay.OrNo & "?", "Continue", "Cancel", danger:=True) Then Return
+
+        Dim reason = PromptDialog.Ask(FindForm(), "Void Payment", "OR " & pay.OrNo & " · " & pay.QuarterLabel & " · " & UiHelper.FormatMoney(pay.Total),
+                                      "Reason for voiding (required, e.g. wrong amount entered)", True, "Void Payment", "danger")
+        If reason Is Nothing Then Return
+        Dim problem = RptService.VoidPayment(pay.PaymentId, reason)
+        If problem IsNot Nothing Then
+            UiHelper.ShowWarning(problem, "Cannot void")
+            Return
+        End If
+
+        LoadLedger(pay.PropertyId)
+        tabs.SelectedIndex = 1
+        SelectPayment(pay.PaymentId)
+        UiHelper.ShowSuccess("OR " & pay.OrNo & " was voided. It stays in the payment history; its OR number stays used." &
+                             If(impact.Endorsement IsNot Nothing, vbCrLf & "The RPT endorsement of " & impact.Endorsement.ReferenceNo & " is Pending again.", "") &
+                             If(impact.FinalPermitWarning IsNot Nothing, vbCrLf & impact.FinalPermitWarning & " This was noted in the audit log.", "") &
+                             vbCrLf & "Next: record the correct payment with ""Record Payment"".", "Payment voided")
     End Sub
 
     Protected Overrides Sub Dispose(disposing As Boolean)

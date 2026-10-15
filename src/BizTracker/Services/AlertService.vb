@@ -86,12 +86,14 @@ Public NotInheritable Class AlertService
         ' Real property tax quarters: overdue, or due within the warning days
         For Each q In RptService.GetAllQuarters(id)
             If q.IsPaid Then Continue For
+            ' A partly paid quarter says how much is left ("partially paid, P67.10 left")
+            Dim partNote = If(q.IsPartiallyPaid, ", " & q.PartialNote, "")
             If q.IsOverdue Then
                 list.Add(NewAlert(id, ModuleNames.RealPropertyTax, q.AssessmentId, Urgent,
-                                  "Real property tax " & q.Label & " is overdue (PIN " & q.Pin & ")", q.DueDate))
-            ElseIf q.Status = StatusService.DueSoon Then
+                                  "Real property tax " & q.Label & " is overdue" & partNote & " (PIN " & q.Pin & ")", q.DueDate))
+            ElseIf StatusService.DaysUntil(q.DueDate) <= warnDays Then
                 list.Add(NewAlert(id, ModuleNames.RealPropertyTax, q.AssessmentId, Warning,
-                                  "Real property tax " & q.Label & " is due soon (PIN " & q.Pin & ")", q.DueDate))
+                                  "Real property tax " & q.Label & " is due soon" & partNote & " (PIN " & q.Pin & ")", q.DueDate))
             End If
         Next
 

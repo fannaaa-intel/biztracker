@@ -25,7 +25,6 @@ Public NotInheritable Class ReferenceNoRepository
             Case "AIC" : tableName = "inspections" : columnName = "certificate_no"
             Case "CP" : tableName = "construction_projects" : columnName = "reference_no"
             Case "LC", "FSEC", "BLDG", "OCC" : tableName = "construction_clearances" : columnName = "clearance_no"
-            Case "OR" : tableName = "rpt_payments" : columnName = "or_no"
             Case Else
                 Throw New ArgumentException("Unknown reference number prefix: " & prefix)
         End Select

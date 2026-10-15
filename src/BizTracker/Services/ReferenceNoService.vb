@@ -16,7 +16,7 @@ Public NotInheritable Class ReferenceNoService
     Public Const Inspection As String = "INS"             ' inspections.reference_no
     Public Const InspectionCertificate As String = "AIC"  ' inspections.certificate_no
     Public Const ConstructionProject As String = "CP"     ' construction_projects.reference_no
-    Public Const OfficialReceipt As String = "OR"         ' rpt_payments.or_no
+    ' Official Receipt numbers are NOT generated: the collector types the AF 51 serial (RptService.ValidatePayment).
 
     ''' <summary>
     ''' Next number for a prefix, e.g. GetNext("BP") -> "BP-2026-00004".

@@ -122,18 +122,30 @@ Public NotInheritable Class BusinessPermitRepository
     ''' </summary>
     Public Shared Function SetEndorsement(permitId As Integer, office As String, status As String,
                                           userId As Integer?, remarks As String) As Boolean
-        Const sql As String =
-            "UPDATE clearance_endorsements SET status = @status, " &
-            "  endorsed_by = IF(@status = 'Pending', NULL, @uid), " &
-            "  endorsed_at = IF(@status = 'Pending', NULL, NOW()), " &
-            "  remarks = @remarks " &
-            "WHERE permit_id = @pid AND office = @office"
-        Return Db.ExecuteNonQuery(sql,
+        Return Db.ExecuteNonQuery(SetEndorsementSql, EndorsementParameters(permitId, office, status, userId, remarks)) > 0
+    End Function
+
+    ''' <summary>Same as SetEndorsement, but inside a Db.RunInTransaction (e.g. together with an RPT payment).</summary>
+    Public Shared Sub TxSetEndorsement(conn As MySqlConnection, tx As MySqlTransaction, change As EndorsementChange)
+        Db.TxExecute(conn, tx, SetEndorsementSql,
+                     EndorsementParameters(change.PermitId, change.Office, change.NewStatus, change.UserId, change.Remarks))
+    End Sub
+
+    Private Const SetEndorsementSql As String =
+        "UPDATE clearance_endorsements SET status = @status, " &
+        "  endorsed_by = IF(@status = 'Pending', NULL, @uid), " &
+        "  endorsed_at = IF(@status = 'Pending', NULL, NOW()), " &
+        "  remarks = @remarks " &
+        "WHERE permit_id = @pid AND office = @office"
+
+    Private Shared Function EndorsementParameters(permitId As Integer, office As String, status As String,
+                                                  userId As Integer?, remarks As String) As MySqlParameter()
+        Return {
             Db.P("@status", status),
             Db.P("@uid", userId),
             Db.P("@remarks", Db.NullIfEmpty(remarks)),
             Db.P("@pid", permitId),
-            Db.P("@office", office)) > 0
+            Db.P("@office", office)}
     End Function
 
     ' ---------------- helpers ----------------

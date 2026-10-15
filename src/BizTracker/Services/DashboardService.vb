@@ -117,9 +117,9 @@ Public NotInheritable Class DashboardService
             item.IsUrgent = True
             item.DueDate = q.DueDate
             item.Title = "Real property tax " & q.Label
-            item.Detail = UiHelper.FormatMoney(q.Amount + q.Penalty) & " incl. penalty · was due " &
-                          UiHelper.FormatDate(q.DueDate) & " · PIN " & q.Pin
-            item.ShortDetail = UiHelper.FormatMoney(q.Amount + q.Penalty) & " to pay"
+            item.Detail = UiHelper.FormatMoney(q.BalanceDue) & " incl. penalty" & If(q.IsPartiallyPaid, " (partially paid)", "") &
+                          " · was due " & UiHelper.FormatDate(q.DueDate) & " · PIN " & q.Pin
+            item.ShortDetail = UiHelper.FormatMoney(q.BalanceDue) & If(q.IsPartiallyPaid, " left", " to pay")
             items.Add(item)
         Next
 
@@ -313,14 +313,16 @@ Public NotInheritable Class DashboardService
             rpt.Value = UiHelper.FormatMoney(totalDue)
             If overdue.Count > 0 Then
                 rpt.Status = StatusService.Overdue
-                rpt.Note = overdue.Count & " quarter" & If(overdue.Count = 1, "", "s") & " overdue"
+                rpt.Note = overdue.Count & " quarter" & If(overdue.Count = 1, "", "s") & " overdue" &
+                           If(overdue.Any(Function(q) q.IsPartiallyPaid), " (partly paid)", "")
             ElseIf Not ledger.Any(Function(r) r.IsAssessed) Then
                 rpt.Note = "no " & year & " assessment yet"
             ElseIf totalDue = 0D Then
                 rpt.Status = StatusService.Paid : rpt.Note = "all " & year & " quarters paid"
             Else
                 Dim nextDue = ledger.SelectMany(Function(r) r.Quarters).Where(Function(q) Not q.IsPaid).OrderBy(Function(q) q.DueDate).First()
-                rpt.Status = nextDue.Status : rpt.Note = "due " & nextDue.DueDate.ToString("MMM d")
+                rpt.Status = nextDue.Status
+                rpt.Note = If(nextDue.IsPartiallyPaid, "Q" & nextDue.Quarter & " partly paid · ", "") & "due " & nextDue.DueDate.ToString("MMM d")
             End If
         End If
         rpt.Detail = If(ledger.Count = 0, "No real property on record",
@@ -407,6 +409,7 @@ Public NotInheritable Class DashboardService
         Dim bpInForce = 0, spInForce = 0, rptOverdueBiz = 0, insCertified = 0, cpOnHold = 0
         Dim bizCount = 0, rptBiz = 0, cpApproved = 0, cpClearances = 0
         Dim rptOverdueAmount = 0D
+        Dim rptPartial = 0          ' quarters partly paid (overdue or not)
         Dim hcTotal = 0, hcValid = 0, hcExpiring = 0, hcExpired = 0
         For Each b In businesses
             Dim id = b.BusinessId
@@ -426,7 +429,8 @@ Public NotInheritable Class DashboardService
             ' RPT: overdue quarters (all years)
             Dim overdue = RptService.GetOverdueQuarters(id)
             rpt.PendingCount += overdue.Count
-            rptOverdueAmount += overdue.Sum(Function(q) q.Amount + q.Penalty)
+            rptOverdueAmount += overdue.Sum(Function(q) q.BalanceDue)
+            rptPartial += RptService.GetAllQuarters(id).Where(Function(q) q.IsPartiallyPaid).Count()
             If overdue.Count > 0 Then rptOverdueBiz += 1
             If RptService.GetProperties(id).Count > 0 Then rptBiz += 1
 
@@ -458,7 +462,8 @@ Public NotInheritable Class DashboardService
         sp.Note = "applications" : sp.Detail = spInForce & " sanitary permit" & If(spInForce = 1, "", "s") & " in force"
         rpt.Value = UiHelper.FormatMoney(rptOverdueAmount) : rpt.Status = If(rpt.PendingCount > 0, StatusService.Overdue, StatusService.Paid)
         rpt.Note = If(rpt.PendingCount > 0, rpt.PendingCount & " quarter" & If(rpt.PendingCount = 1, "", "s") & " overdue", "nothing overdue")
-        rpt.Detail = rptOverdueBiz & " business" & If(rptOverdueBiz = 1, "", "es") & " without tax clearance"
+        rpt.Detail = rptOverdueBiz & " business" & If(rptOverdueBiz = 1, "", "es") & " without tax clearance" &
+                     If(rptPartial > 0, " · " & rptPartial & " quarter" & If(rptPartial = 1, "", "s") & " partly paid", "")
         hc.Value = hc.PendingCount & " to renew"
         hc.Status = If(hcExpired > 0, StatusService.Expired, If(hcExpiring > 0, StatusService.ExpiringSoon, StatusService.Valid))
         hc.Note = If(hcTotal = 0, "no personnel", CInt(Math.Round(hcValid * 100D / hcTotal, MidpointRounding.AwayFromZero)) & "% compliant")

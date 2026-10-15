@@ -35,6 +35,7 @@ Changes made after the first import come as scripts in `database/migrations/`. R
 | Script | What it adds |
 |---|---|
 | `2026-10-15_forgot_password.sql` | `users.email` (unique) and the `password_resets` table. Fills e-mails where it is safe, then lists the accounts still without an e-mail (fix them in Settings > Users). |
+| `2026-10-15_rpt_partial_payments.sql` | Partial RPT payments: drops the one-payment-per-quarter rule and adds payment method, reference no., remarks and voiding to `rpt_payments`. Existing payments become Cash with the same amounts. Ends with a check that must show 0 problem quarters. |
 
 ## Tables
 | # | Table | What it stores |
@@ -49,7 +50,7 @@ Changes made after the first import come as scripts in `database/migrations/`. R
 | 8 | `health_certificates` | Health certificates per employee (valid 1 year). Status is computed from `expiry_date`. |
 | 9 | `properties` | Real properties (land, building or machinery) with PIN, Tax Declaration no. and assessed value. |
 | 10 | `rpt_assessments` | Yearly RPT assessment per property: basic tax 1% + SEF 1%. |
-| 11 | `rpt_payments` | Quarterly RPT payments with Official Receipt no. and late penalty. |
+| 11 | `rpt_payments` | Walk-in RPT payments (several per quarter = partial payments): principal and penalty parts, method, reference no., the typed AF 51 OR no., and voiding (kept, never deleted). |
 | 12 | `inspections` | Annual joint inspection per business: schedule, re-inspection, overall result, certificate no. |
 | 13 | `inspection_items` | Per-department result (Structural, Electrical, Mechanical, Fire) for each inspection. |
 | 14 | `construction_projects` | Construction permit projects and their current stage (Locational → Building Permit → Construction → Occupancy → Completed). |
@@ -86,4 +87,4 @@ The main business is **Cristan's Bakeshop** (Centro 01, Aparri, Cagayan):
 
 Two other businesses make the staff dashboards realistic:
 - **Santos General Merchandise:** everything compliant.
-- **Kusina ni Aling Rosa:** a renewal *Submitted*, 1 expired health certificate, RPT quarters overdue after Q1, a sanitary permit *For Inspection*, and an inspection scheduled in 14 days.
+- **Kusina ni Aling Rosa:** a renewal *Submitted*, 1 expired health certificate, RPT Q1 paid and **Q2 partially paid** (₱60.00 of ₱125.00 before the due date, so the rest is overdue with a penalty on the unpaid ₱65.00 only) and later due quarters overdue, a sanitary permit *For Inspection*, and an inspection scheduled in 14 days.

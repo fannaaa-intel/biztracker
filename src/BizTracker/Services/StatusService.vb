@@ -1,7 +1,7 @@
 ''' <summary>
 ''' Computes every date-based status from Date.Today. These statuses are NEVER stored in the database.
 '''   - Valid / Expiring Soon / Expired  (health certificates, permits, sanitary permits)
-'''   - Paid / Overdue / Due Soon / Not Yet Due  (RPT quarters and other due dates)
+'''   - Paid / Overdue / Partially Paid / Due Soon / Not Yet Due  (RPT quarters and other due dates)
 ''' "Soon" means within the expiry_warning_days setting (default 30).
 ''' </summary>
 Public NotInheritable Class StatusService
@@ -20,6 +20,7 @@ Public NotInheritable Class StatusService
     Public Const Overdue As String = "Overdue"
     Public Const DueSoon As String = "Due Soon"
     Public Const NotYetDue As String = "Not Yet Due"
+    Public Const PartiallyPaid As String = "Partially Paid"
 
     ''' <summary>Days before expiry to show "Expiring Soon" (settings: expiry_warning_days).</summary>
     Public Shared ReadOnly Property WarningDays As Integer
@@ -86,6 +87,18 @@ Public NotInheritable Class StatusService
 
     Public Shared Function GetQuarterStatus(taxYear As Integer, quarter As Integer, isPaid As Boolean) As String
         Return GetDueStatus(GetQuarterDueDate(taxYear, quarter), isPaid)
+    End Function
+
+    ''' <summary>
+    ''' Status of a quarter that may be partly paid. Paid only when its principal is fully paid.
+    ''' Overdue wins over Partially Paid (red is the more important signal); "Partially Paid" (amber)
+    ''' shows only while the quarter is not yet past its due date.
+    ''' </summary>
+    Public Shared Function GetQuarterStatus(dueDate As Date, isPaid As Boolean, isPartiallyPaid As Boolean) As String
+        If isPaid Then Return Paid
+        If IsOverdue(dueDate) Then Return Overdue
+        If isPartiallyPaid Then Return PartiallyPaid
+        Return GetDueStatus(dueDate, False)
     End Function
 
     ' ==================== Validity rules (from CLAUDE.md business rules) ====================

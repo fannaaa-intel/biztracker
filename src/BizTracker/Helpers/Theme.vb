@@ -108,7 +108,7 @@ Public NotInheritable Class Theme
                 Return 1
             Case "pending", "expiring soon", "submitted", "under review", "for assessment",
                  "assessed", "scheduled", "in progress", "pending upload", "due soon",
-                 "lab analysis", "for inspection", "on hold", "unpaid", "late"
+                 "lab analysis", "for inspection", "on hold", "unpaid", "late", "partially paid"
                 Return 2
             Case "expired", "overdue", "rejected", "failed", "for re-inspection", "re-inspection", "cancelled", "not issued", "not available"
                 Return 3

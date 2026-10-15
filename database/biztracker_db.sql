@@ -217,22 +217,35 @@ CREATE TABLE rpt_assessments (
     REFERENCES properties(property_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
+-- One row per payment (walk-in). A quarter can have several payments (partial payments).
+-- amount_paid + penalty = the amount on the receipt: amount_paid is the part applied to the
+-- quarter's tax (principal), penalty the part applied to the late-payment penalty.
+-- Voided payments are never deleted: voided_at is set and they no longer count.
 CREATE TABLE rpt_payments (
-  payment_id     INT AUTO_INCREMENT PRIMARY KEY,
-  assessment_id  INT NOT NULL,
-  quarter        TINYINT UNSIGNED NOT NULL,
-  amount_paid    DECIMAL(12,2) NOT NULL,
-  penalty        DECIMAL(12,2) NOT NULL DEFAULT 0,
-  or_no          VARCHAR(30) NOT NULL UNIQUE,     -- Official Receipt No.
-  payment_date   DATE NOT NULL,
-  received_by    INT NULL,
-  created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-  UNIQUE KEY uq_pay_quarter (assessment_id, quarter),
+  payment_id      INT AUTO_INCREMENT PRIMARY KEY,
+  assessment_id   INT NOT NULL,
+  quarter         TINYINT UNSIGNED NOT NULL,
+  amount_paid     DECIMAL(12,2) NOT NULL,            -- applied to principal (the quarter's tax)
+  penalty         DECIMAL(12,2) NOT NULL DEFAULT 0,  -- applied to penalty
+  payment_method  ENUM('Cash','Check','GCash','Bank Transfer') NOT NULL DEFAULT 'Cash',
+  reference_no    VARCHAR(50) NULL,                  -- check no. / GCash or bank transaction ref.
+  or_no           VARCHAR(30) NOT NULL UNIQUE,       -- typed from the pre-printed AF 51 booklet (stays used if voided)
+  payment_date    DATE NOT NULL,
+  received_by     INT NULL,
+  remarks         VARCHAR(255) NULL,
+  voided_at       DATETIME NULL,                     -- set = voided (mistake correction)
+  voided_by       INT NULL,
+  void_reason     VARCHAR(255) NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_pay_assessment (assessment_id, quarter),
   INDEX idx_pay_user (received_by),
+  INDEX idx_pay_voided_by (voided_by),
   CONSTRAINT chk_quarter CHECK (quarter BETWEEN 1 AND 4),
   CONSTRAINT fk_pay_assessment FOREIGN KEY (assessment_id)
     REFERENCES rpt_assessments(assessment_id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_pay_user FOREIGN KEY (received_by)
+    REFERENCES users(user_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_pay_voided_by FOREIGN KEY (voided_by)
     REFERENCES users(user_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -508,10 +521,11 @@ SELECT property_id, property_id, @Y,
 FROM properties;
 
 -- Quarter due dates: Mar 31, Jun 30, Sep 30, Dec 31.
+-- OR numbers are AF 51 serials typed by the collector (7001011, 7001012, ...).
 -- Bakeshop (properties 1-2): every quarter already due is PAID on time.
 INSERT INTO rpt_payments (assessment_id, quarter, amount_paid, penalty, or_no, payment_date, received_by)
 SELECT a.assessment_id, q.q, ROUND(a.total_due / 4, 2), 0,
-       CONCAT('OR-', @Y, '-', LPAD(a.assessment_id * 10 + q.q, 5, '0')),
+       CONCAT('70010', a.assessment_id, q.q),
        (MAKEDATE(@Y, 1) + INTERVAL (q.q * 3) MONTH - INTERVAL 1 DAY) - INTERVAL 10 DAY,
        4
 FROM rpt_assessments a
@@ -519,11 +533,27 @@ JOIN (SELECT 1 q UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4) q
 WHERE a.property_id IN (1, 2)
   AND (MAKEDATE(@Y, 1) + INTERVAL (q.q * 3) MONTH - INTERVAL 1 DAY) < CURDATE();
 
--- Restaurant (property 3): only Q1 paid, so any later due quarters show as OVERDUE.
+-- The bakeshop's latest payment was made by GCash.
+UPDATE rpt_payments SET payment_method = 'GCash', reference_no = '1009 284 551203'
+WHERE assessment_id = 2 ORDER BY quarter DESC LIMIT 1;
+
+-- Restaurant (property 3, P125.00 a quarter): Q1 paid in full. Q2: a PARTIAL payment of P60.00
+-- made before the Jun 30 due date (no penalty), so P65.00 of Q2 is left. After Jun 30 the rest
+-- of Q2 and any later due quarters show as OVERDUE (penalty only on the unpaid P65.00).
+-- Q2 is paid only after Q1 is due (quarters are paid in order).
 INSERT INTO rpt_payments (assessment_id, quarter, amount_paid, penalty, or_no, payment_date, received_by)
 SELECT a.assessment_id, 1, ROUND(a.total_due / 4, 2), 0,
-       CONCAT('OR-', @Y, '-', LPAD(a.assessment_id * 10 + 1, 5, '0')),
+       '7001031',
        MAKEDATE(@Y, 1) + INTERVAL 80 DAY, 4
+FROM rpt_assessments a
+WHERE a.property_id = 3
+  AND (MAKEDATE(@Y, 1) + INTERVAL 3 MONTH - INTERVAL 1 DAY) < CURDATE();
+
+INSERT INTO rpt_payments (assessment_id, quarter, amount_paid, penalty, or_no, payment_date, received_by, remarks)
+SELECT a.assessment_id, 2, 60.00, 0,
+       '7001032',
+       LEAST(CURDATE(), MAKEDATE(@Y, 1) + INTERVAL 6 MONTH - INTERVAL 6 DAY), 4,
+       'Partial payment - owner will settle the rest'
 FROM rpt_assessments a
 WHERE a.property_id = 3
   AND (MAKEDATE(@Y, 1) + INTERVAL 3 MONTH - INTERVAL 1 DAY) < CURDATE();

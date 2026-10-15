@@ -77,3 +77,20 @@ Public NotInheritable Class ClearanceTypes
 
     Public Shared ReadOnly All As String() = {Locational, FSEC, Building, Occupancy}
 End Class
+
+''' <summary>rpt_payments.payment_method values.</summary>
+Public NotInheritable Class PaymentMethods
+    Private Sub New()
+    End Sub
+    Public Const Cash As String = "Cash"
+    Public Const Check As String = "Check"
+    Public Const GCash As String = "GCash"
+    Public Const BankTransfer As String = "Bank Transfer"
+
+    Public Shared ReadOnly All As String() = {Cash, Check, GCash, BankTransfer}
+
+    ''' <summary>Every method except cash needs a reference (check no. or transaction ref.).</summary>
+    Public Shared Function NeedsReference(method As String) As Boolean
+        Return method IsNot Nothing AndAlso method <> Cash
+    End Function
+End Class

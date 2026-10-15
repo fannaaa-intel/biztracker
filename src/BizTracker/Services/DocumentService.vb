@@ -31,12 +31,40 @@ Public NotInheritable Class DocumentService
     Public Const VerifyExpired As String = "Expired"
     Public Const VerifyNotFound As String = "Not Found"
     Public Const VerifyMismatch As String = "Code Mismatch"
+    Public Const VerifyVoided As String = "Voided"
 
     Private Const CodeSecret As String = "BizTracker|LGU document"
 
     ''' <summary>Admin, BPLO and Owner (CLAUDE.md roles table).</summary>
     Public Shared Function CanView() As Boolean
         Return AccessService.CanAccess(AppScreen.PermitVault)
+    End Function
+
+    ''' <summary>
+    ''' Who may print a document: vault users, and - for RPT official receipts - anyone who can open the
+    ''' Real Property Tax screen (the Assessor prints the receipt right after recording a payment).
+    ''' </summary>
+    Public Shared Function CanPrint(d As IssuedDocument) As Boolean
+        If d Is Nothing OrElse Not AccessService.CanSeeBusiness(d.BusinessId) Then Return False
+        Return CanView() OrElse (d.Kind = DocumentKinds.OfficialReceipt AndAlso AccessService.CanAccess(AppScreen.RealPropertyTax))
+    End Function
+
+    ''' <summary>The official receipt of one RPT payment (voided ones too), or Nothing if the user may not see it.</summary>
+    Public Shared Function GetOfficialReceipt(paymentId As Integer) As IssuedDocument
+        Dim pay = RptRepository.GetPaymentById(paymentId)
+        Dim prop = If(pay Is Nothing, Nothing, PropertyRepository.GetById(pay.PropertyId))
+        If prop Is Nothing OrElse Not AccessService.CanSeeBusiness(prop.BusinessId) Then Return Nothing
+        If Not CanView() AndAlso Not AccessService.CanAccess(AppScreen.RealPropertyTax) Then Return Nothing
+        Dim b = BusinessRepository.GetById(prop.BusinessId)
+        If b Is Nothing Then Return Nothing
+        Dim list As New List(Of IssuedDocument)
+        AddRptReceipts(b, RptService.GetProperties(b.BusinessId), list)
+        Dim d = list.FirstOrDefault(Function(x) x.RelatedId = paymentId)
+        If d IsNot Nothing Then
+            d.BusinessId = b.BusinessId
+            d.BusinessName = b.BusinessName
+        End If
+        Return d
     End Function
 
     ' ==================== Listing ====================
@@ -66,11 +94,12 @@ Public NotInheritable Class DocumentService
     ''' <summary>Counts for the summary cards: valid (incl. Issued / Paid / Approved), expiring soon, expired.</summary>
     Public Shared Function CountByStatus(docs As IEnumerable(Of IssuedDocument)) As Dictionary(Of String, Integer)
         Dim counts As New Dictionary(Of String, Integer) From {
-            {StatusService.Valid, 0}, {StatusService.ExpiringSoon, 0}, {StatusService.Expired, 0}}
+            {StatusService.Valid, 0}, {StatusService.ExpiringSoon, 0}, {StatusService.Expired, 0}, {RptService.Voided, 0}}
         For Each d In docs
             Select Case d.Status
                 Case StatusService.ExpiringSoon : counts(StatusService.ExpiringSoon) += 1
                 Case StatusService.Expired : counts(StatusService.Expired) += 1
+                Case RptService.Voided : counts(RptService.Voided) += 1        ' a voided receipt is not a valid document
                 Case Else : counts(StatusService.Valid) += 1
             End Select
         Next
@@ -145,22 +174,7 @@ Public NotInheritable Class DocumentService
     Private Shared Sub AddRptDocuments(b As Business, list As List(Of IssuedDocument))
         Dim properties = RptService.GetProperties(b.BusinessId)
         If properties.Count = 0 Then Return
-        ' Official receipts: one per recorded quarterly payment
-        For Each q In RptService.GetAllQuarters(b.BusinessId).Where(Function(x) x.IsPaid)
-            Dim pay = q.Payment
-            Dim prop = properties.First(Function(x) x.PropertyId = q.PropertyId)
-            Dim d = NewDoc(DocumentKinds.OfficialReceipt, "Official Receipt - Real Property Tax", pay.OrNo, pay.PaymentDate, Nothing,
-                           StatusService.Paid, pay.PaymentId, "rpt_payments", AppScreen.RealPropertyTax)
-            d.Holder = "PIN " & prop.Pin & " · " & q.Label
-            d.Fields("pin") = prop.Pin
-            d.Fields("td_no") = prop.TdNo
-            d.Fields("location") = prop.Location
-            d.Fields("period") = q.Label
-            d.Fields("total_paid") = UiHelper.FormatMoney(pay.AmountPaid + pay.Penalty)
-            d.Rows.Add({"Real property tax " & q.Label & " (basic + SEF)", UiHelper.FormatMoney(pay.AmountPaid)})
-            d.Rows.Add({"Penalty", UiHelper.FormatMoney(pay.Penalty)})
-            list.Add(d)
-        Next
+        AddRptReceipts(b, properties, list)
         ' Tax clearance: only while nothing is overdue
         If RptService.GetTaxClearanceStatus(b.BusinessId) = RptService.ClearanceIssued Then
             Dim year = Date.Today.Year
@@ -173,6 +187,34 @@ Public NotInheritable Class DocumentService
             Next
             list.Add(d)
         End If
+    End Sub
+
+    ''' <summary>Official receipts: one per RPT payment (partial payments too). Voided ones stay listed as "Voided".</summary>
+    Private Shared Sub AddRptReceipts(b As Business, properties As List(Of RealProperty), list As List(Of IssuedDocument))
+        Dim payments = RptService.GetBusinessPayments(b.BusinessId)
+        Dim assessments = RptRepository.GetAssessmentsByBusinessId(b.BusinessId)
+        For Each pay In payments
+            Dim prop = properties.FirstOrDefault(Function(x) x.PropertyId = pay.PropertyId)
+            Dim a = assessments.FirstOrDefault(Function(x) x.AssessmentId = pay.AssessmentId)
+            If prop Is Nothing OrElse a Is Nothing Then Continue For
+            Dim d = NewDoc(DocumentKinds.OfficialReceipt, "Official Receipt - Real Property Tax", pay.OrNo, pay.PaymentDate, Nothing,
+                           If(pay.IsVoided, RptService.Voided, StatusService.Paid), pay.PaymentId, "rpt_payments", AppScreen.RealPropertyTax)
+            d.Holder = "PIN " & prop.Pin & " · " & pay.QuarterLabel
+            d.Fields("pin") = prop.Pin
+            d.Fields("td_no") = prop.TdNo
+            d.Fields("location") = prop.Location
+            d.Fields("period") = pay.QuarterLabel
+            d.Fields("total_paid") = UiHelper.FormatMoney(pay.Total)
+            d.Fields("payment_method") = pay.PaymentMethod & If(pay.ReferenceNo <> "", " · Ref. " & pay.ReferenceNo, "")
+            d.Fields("received_by") = If(pay.ReceivedByName <> "", pay.ReceivedByName, "Collecting Officer")
+            Dim left = RptService.GetBalanceAfter(pay, payments.Where(Function(x) x.AssessmentId = pay.AssessmentId), a.TotalDue)
+            d.Fields("balance_after") = If(left = 0D, "None - " & pay.QuarterLabel & " fully paid", UiHelper.FormatMoney(left) & " still due on " & pay.QuarterLabel)
+            d.Fields("void_reason") = pay.VoidReason
+            d.Fields("voided_at") = If(pay.VoidedAt.HasValue, UiHelper.FormatDate(pay.VoidedAt), "")
+            d.Rows.Add({"Real property tax " & pay.QuarterLabel & " (basic + SEF)", UiHelper.FormatMoney(pay.AmountPaid)})
+            d.Rows.Add({"Penalty (late payment)", UiHelper.FormatMoney(pay.Penalty)})
+            list.Add(d)
+        Next
     End Sub
 
     ''' <summary>Tax clearances are not stored: "TC-2026-00003" = year + business number.</summary>
@@ -231,6 +273,10 @@ Public NotInheritable Class DocumentService
     ''' <summary>Why the document cannot be printed (Nothing = it can). Expired documents must be renewed first.</summary>
     Public Shared Function GetPrintBlocker(d As IssuedDocument) As String
         If d Is Nothing Then Return "Select a document first."
+        If d.Status = RptService.Voided Then
+            Return "OR " & d.ReferenceNo & " was voided" & If(d.Fields.ContainsKey("voided_at"), " on " & d.Fields("voided_at"), "") &
+                   ". A voided receipt cannot be printed."
+        End If
         If d.Status = StatusService.Expired Then
             Return d.ReferenceNo & " expired on " & UiHelper.FormatDate(d.ValidUntil) & ". Renew it first - only valid documents can be printed."
         End If
@@ -279,6 +325,12 @@ Public NotInheritable Class DocumentService
         If cleanCode <> "" AndAlso cleanCode.Replace("-", "") <> GetVerificationCode(d).Replace("-", "") Then
             result.Status = VerifyMismatch
             result.Message = "The verification code does not match " & d.ReferenceNo & ". The printed copy may have been altered."
+        ElseIf d.Status = RptService.Voided Then
+            result.Status = VerifyVoided
+            result.Message = "OR " & d.ReferenceNo & " is genuine but was VOIDED" &
+                             If(d.Fields.ContainsKey("voided_at"), " on " & d.Fields("voided_at"), "") &
+                             If(d.Fields.ContainsKey("void_reason") AndAlso d.Fields("void_reason") <> "", " (" & d.Fields("void_reason") & ")", "") &
+                             ". It is not a valid receipt."
         ElseIf d.Status = StatusService.Expired Then
             result.Status = VerifyExpired
             result.Message = d.Title & " " & d.ReferenceNo & " is genuine but expired on " & UiHelper.FormatDate(d.ValidUntil) & "."
