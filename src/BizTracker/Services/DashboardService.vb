@@ -137,6 +137,21 @@ Public NotInheritable Class DashboardService
                 item.ShortDetail = latest.ReferenceNo
                 items.Add(item)
             Next
+            ' Business tax to pay on the assessed application (same balance as the Business Permits screen)
+            If latest.Status = BusinessPermitService.Assessed Then
+                Dim bal = BusinessTaxService.GetBalance(latest, Date.Today)
+                If bal.Balance > 0D Then
+                    Dim item = NewItem(b, AppScreen.BusinessPermits, ModuleNames.BusinessPermit, latest.PermitId)
+                    item.Status = If(bal.IsPartiallyPaid, StatusService.PartiallyPaid, "Unpaid")
+                    item.IsUrgent = bal.MonthsLate > 0
+                    item.DueDate = bal.Deadline
+                    item.Title = "Business tax " & latest.PermitYear
+                    item.Detail = UiHelper.FormatMoney(bal.Balance) & If(bal.IsPartiallyPaid, " left (partially paid)", " to pay") &
+                                  " · " & latest.ReferenceNo & If(bal.MonthsLate > 0, " · late, interest running", "")
+                    item.ShortDetail = UiHelper.FormatMoney(bal.Balance) & If(bal.IsPartiallyPaid, " left", " to pay")
+                    items.Add(item)
+                End If
+            End If
         End If
 
         ' 4. Failed departments of the current annual inspection
@@ -254,8 +269,11 @@ Public NotInheritable Class DashboardService
         If latest Is Nothing Then
             bp.Value = "None" : bp.Note = "no applications yet"
         Else
-            bp.Value = latest.ReferenceNo : bp.Status = latest.Status
+            bp.Value = latest.ReferenceNo : bp.Status = BusinessTaxService.GetDisplayStatus(latest)
             bp.Note = latest.ApplicationType & " · " & latest.PermitYear
+            If latest.Status = BusinessPermitService.Assessed Then
+                bp.Note &= " · " & UiHelper.FormatMoney(BusinessTaxService.GetBalance(latest, Date.Today).Balance) & " due"
+            End If
             bp.PendingCount = If(BusinessPermitService.IsFinal(latest.Status), 0, 1)
         End If
         bp.Detail = If(current Is Nothing, "No Mayor's permit in force",
@@ -409,6 +427,8 @@ Public NotInheritable Class DashboardService
         Dim bpInForce = 0, spInForce = 0, rptOverdueBiz = 0, insCertified = 0, cpOnHold = 0
         Dim bizCount = 0, rptBiz = 0, cpApproved = 0, cpClearances = 0
         Dim rptOverdueAmount = 0D
+        Dim bpUnpaidTax = 0D
+        Dim bpPartial = 0           ' assessed applications partly paid
         Dim rptPartial = 0          ' quarters partly paid (overdue or not)
         Dim hcTotal = 0, hcValid = 0, hcExpiring = 0, hcExpired = 0
         For Each b In businesses
@@ -417,6 +437,12 @@ Public NotInheritable Class DashboardService
             ' Business permits: open applications (not Issued / Rejected) + permits in force
             Dim bpAll = BusinessPermitRepository.GetByBusinessId(id)
             bp.PendingCount += bpAll.AsEnumerable().Count(Function(p) Not BusinessPermitService.IsFinal(p.Status))
+            ' Business tax still to collect on assessed applications (same balance as the screen)
+            For Each p In bpAll.Where(Function(x) x.Status = BusinessPermitService.Assessed)
+                Dim bal = BusinessTaxService.GetBalance(p, Date.Today)
+                bpUnpaidTax += bal.Balance
+                If bal.IsPartiallyPaid Then bpPartial += 1
+            Next
             Dim current = BusinessPermitService.GetCurrentPermit(id)
             If current IsNot Nothing AndAlso StatusService.GetExpiryStatus(current.ValidUntil) <> StatusService.Expired Then bpInForce += 1
 
@@ -457,7 +483,9 @@ Public NotInheritable Class DashboardService
         Next
 
         bp.Value = bp.PendingCount & " pending" : bp.Status = If(bp.PendingCount > 0, "Pending", "")
-        bp.Note = "applications" : bp.Detail = bpInForce & " Mayor's permit" & If(bpInForce = 1, "", "s") & " in force"
+        bp.Note = "applications" : bp.Detail = bpInForce & " Mayor's permit" & If(bpInForce = 1, "", "s") & " in force" &
+                                               If(bpUnpaidTax > 0D, " · " & UiHelper.FormatMoney(bpUnpaidTax) & " tax to collect", "") &
+                                               If(bpPartial > 0, " (" & bpPartial & " partly paid)", "")
         sp.Value = sp.PendingCount & " pending" : sp.Status = If(sp.PendingCount > 0, "Pending", "")
         sp.Note = "applications" : sp.Detail = spInForce & " sanitary permit" & If(spInForce = 1, "", "s") & " in force"
         rpt.Value = UiHelper.FormatMoney(rptOverdueAmount) : rpt.Status = If(rpt.PendingCount > 0, StatusService.Overdue, StatusService.Paid)

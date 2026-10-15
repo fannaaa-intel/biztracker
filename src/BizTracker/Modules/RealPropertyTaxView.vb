@@ -92,6 +92,9 @@ Public Class RealPropertyTaxView
     Private selected As RptLedgerRow
     Private loading As Boolean
     Private ReadOnly canManage As Boolean = AccessService.CanManage(AppScreen.RealPropertyTax)
+    ''' <summary>Record Payment / Void follow AccessService's payment rule (shared with business tax).</summary>
+    Private ReadOnly canCollect As Boolean = AccessService.CanCollectPayments(AppScreen.RealPropertyTax)
+    Private ReadOnly canVoid As Boolean = AccessService.CanVoidPayments(AppScreen.RealPropertyTax)
 
     Private ReadOnly Property Business As Business
         Get
@@ -120,7 +123,7 @@ Public Class RealPropertyTaxView
         btnAdd = toolbar.AddAction("Add Property", "Add", "primary", AddressOf AddProperty_Click, canManage)
         btnEdit = toolbar.AddAction("Edit Property", "Edit", "secondary", AddressOf EditProperty_Click, canManage)
         btnAssess = toolbar.AddAction("Generate Assessment", "Assess", "secondary", AddressOf Assess_Click, canManage)
-        btnPay = toolbar.AddAction("Record Payment", "Pay", "secondary", AddressOf Pay_Click, canManage)
+        btnPay = toolbar.AddAction("Record Payment", "Pay", "secondary", AddressOf Pay_Click, canCollect)
         AddHandler toolbar.BusinessChanged, Sub()
                                                 txtSearch.Text = ""
                                                 LoadYears()
@@ -538,20 +541,20 @@ Public Class RealPropertyTaxView
     End Function
 
     Private Sub UpdateButtons()
-        If Not canManage Then Return
         Dim hasBusiness = Business IsNot Nothing
         Dim year = TaxYear
-        UiHelper.SetAvailable(btnAdd, If(hasBusiness, Nothing, "Choose a business first."))
-        toolbar.SetTip(btnAdd, "Register a real property of this business")
-
         Dim noSelection = If(ledger.Count = 0, "This business has no properties yet - click Add Property.", "Select a property in the list first.")
-        UiHelper.SetAvailable(btnEdit, If(selected Is Nothing, noSelection, Nothing))
-        toolbar.SetTip(btnEdit, "Edit the selected property")
-
-        Dim assessBlocker = If(selected Is Nothing, noSelection,
-                               RptService.GetAssessmentBlocker(selected.RealProperty.PropertyId, year))
-        UiHelper.SetAvailable(btnAssess, assessBlocker)
-        toolbar.SetTip(btnAssess, "Create the " & year & " assessment (basic + SEF) for the selected property")
+        If canManage Then
+            UiHelper.SetAvailable(btnAdd, If(hasBusiness, Nothing, "Choose a business first."))
+            toolbar.SetTip(btnAdd, "Register a real property of this business")
+            UiHelper.SetAvailable(btnEdit, If(selected Is Nothing, noSelection, Nothing))
+            toolbar.SetTip(btnEdit, "Edit the selected property")
+            Dim assessBlocker = If(selected Is Nothing, noSelection,
+                                   RptService.GetAssessmentBlocker(selected.RealProperty.PropertyId, year))
+            UiHelper.SetAvailable(btnAssess, assessBlocker)
+            toolbar.SetTip(btnAssess, "Create the " & year & " assessment (basic + SEF) for the selected property")
+        End If
+        If Not canCollect Then Return
 
         Dim payBlocker As String
         If selected Is Nothing Then
@@ -633,18 +636,18 @@ Public Class RealPropertyTaxView
                     detail = If(q.PenaltyDue > 0, UiHelper.FormatMoney(q.BalanceDue) & " with penalty", UiHelper.FormatMoney(q.Amount))
                 End If
                 If q.IsOverdue Then detailColor = Theme.StatusRed
-                If canManage AndAlso nextQ IsNot Nothing AndAlso nextQ.Quarter = q.Quarter AndAlso
+                If canCollect AndAlso nextQ IsNot Nothing AndAlso nextQ.Quarter = q.Quarter AndAlso
                    RptService.GetPaymentBlocker(selected, q.Quarter) Is Nothing Then
                     links.Add(New RowLink("Record Payment", Theme.SidebarBlue, Sub() Pay_Click(Nothing, EventArgs.Empty), "Pay"))
                 End If
             End If
-            rows.Add(ListRow(tips, title, detail, q.Status, links, detailColor, If(canManage, LinkColumnWidth("Record Payment"), 0)))
+            rows.Add(ListRow(tips, title, detail, q.Status, links, detailColor, If(canCollect, LinkColumnWidth("Record Payment"), 0)))
         Next
         Dim overdue = selected.Quarters.Where(Function(q) q.IsOverdue).ToList()
         If overdue.Count > 0 Then
             rows.Add(NoteRow(tips, overdue.Count & " overdue quarter" & If(overdue.Count = 1, "", "s") & ": " &
                              UiHelper.FormatMoney(overdue.Sum(Function(q) q.BalanceDue)) & " if paid today. " &
-                             If(canManage, "Quarters are paid in order.", "Please settle at the Municipal Treasurer's Office."), Theme.StatusRed))
+                             If(canCollect, "Quarters are paid in order.", "Please settle at the Municipal Treasurer's Office."), Theme.StatusRed))
         ElseIf nextQ Is Nothing Then
             rows.Add(NoteRow(tips, "All " & year & " quarters are paid.", Theme.StatusGreen))
         End If
@@ -773,7 +776,7 @@ Public Class RealPropertyTaxView
     End Sub
 
     Private Sub Pay_Click(sender As Object, e As EventArgs)
-        If selected Is Nothing OrElse Not canManage Then Return
+        If selected Is Nothing OrElse Not canCollect Then Return
         Dim nextQ = selected.NextPayable
         Dim blocker = If(Not selected.IsAssessed, "Generate the " & TaxYear & " assessment first.",
                          If(nextQ Is Nothing, "All quarters of " & TaxYear & " are paid.", RptService.GetPaymentBlocker(selected, nextQ.Quarter)))
@@ -832,7 +835,7 @@ Public Class RealPropertyTaxView
         UiHelper.StyleSecondaryButton(btnPrintReceipt)
         btnVoid.Text = "Void"
         UiHelper.StyleDangerButton(btnVoid)
-        btnVoid.Visible = canManage
+        btnVoid.Visible = canVoid
         AddHandler btnPrintReceipt.Click, AddressOf PrintReceipt_Click
         AddHandler btnVoid.Click, AddressOf VoidPayment_Click
         bar.Controls.AddRange({lblPaymentsInfo, btnPrintReceipt, btnVoid})
@@ -928,7 +931,7 @@ Public Class RealPropertyTaxView
         tips.SetToolTip(lblPaymentsInfo, lblPaymentsInfo.Text)
         lblPaymentsEmpty.Visible = history.Count = 0
         lblPaymentsEmpty.Text = "No payments recorded for this property yet." &
-                                If(canManage, vbCrLf & "Use ""Record Payment"" when the owner pays at the counter.", "")
+                                If(canCollect, vbCrLf & "Use ""Record Payment"" when the owner pays at the counter.", "")
         If lblPaymentsEmpty.Visible Then lblPaymentsEmpty.BringToFront()
         UpdatePaymentButtons()
     End Sub
@@ -964,7 +967,7 @@ Public Class RealPropertyTaxView
             If(pay Is Nothing, "Select a payment in the list first.",
                If(pay.IsVoided, "OR " & pay.OrNo & " was voided - a voided receipt cannot be printed.", Nothing)))
         tips.SetToolTip(btnPrintReceipt, "Print the official receipt of the selected payment")
-        If Not canManage Then Return
+        If Not canVoid Then Return
         Dim blocker As String = Nothing
         If pay Is Nothing Then
             blocker = "Select a payment in the list first."
@@ -1014,7 +1017,7 @@ Public Class RealPropertyTaxView
 
     Private Sub VoidPayment_Click(sender As Object, e As EventArgs)
         Dim pay = SelectedPayment
-        If pay Is Nothing OrElse Not canManage Then Return
+        If pay Is Nothing OrElse Not canVoid Then Return
         Dim impact = RptService.GetVoidImpact(pay.PaymentId)
         If impact.Blocker IsNot Nothing Then
             UiHelper.ShowWarning(impact.Blocker, "Cannot void")

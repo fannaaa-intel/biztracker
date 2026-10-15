@@ -4,7 +4,8 @@
 '''   Cards    : current Mayor's Permit, latest application, amount due
 '''   Left     : applications grid with search
 '''   Right    : selected application - progress tracker and tabs
-'''              (Endorsements | Requirements | Assessment)
+'''              (Endorsements | Requirements | Assessment | Payments)
+'''   Payments : business tax walk-in payments (partial ones too), Print Receipt and Void
 ''' No SQL here: everything goes through BusinessPermitService / repositories.
 ''' </summary>
 Public Class BusinessPermitView
@@ -18,7 +19,22 @@ Public Class BusinessPermitView
         Public Property AppType As String
         Public Property Status As String
         Public Property Filed As String
+        Public Property Balance As String
+    End Class
+
+    ''' <summary>Payment history grid row (display only).</summary>
+    Private Class PaymentGridRow
+        Public Property PaymentId As Integer
+        Public Property PaymentDate As String
+        Public Property OrNo As String
+        Public Property Method As String
+        Public Property Reference As String
+        Public Property Tax As String
+        Public Property Charges As String
         Public Property Total As String
+        Public Property ReceivedBy As String
+        Public Property Status As String
+        Public Property IsVoided As Boolean
     End Class
 
     Private Shared lastBusinessId As Integer   ' remembers the staff's last selected business
@@ -32,6 +48,7 @@ Public Class BusinessPermitView
     Private ReadOnly btnRenew As New Button()
     Private ReadOnly btnView As New Button()
     Private ReadOnly btnStatus As New Button()
+    Private ReadOnly btnPay As New Button()
     Private ReadOnly btnDelete As New Button()
     Private ReadOnly buttonTexts As New Dictionary(Of Button, String())   ' {full, short}
 
@@ -54,6 +71,14 @@ Public Class BusinessPermitView
     Private ReadOnly endorsementList As New WheelScrollPanel()
     Private ReadOnly requirements As New RequirementsPanel()
     Private ReadOnly assessmentList As New WheelScrollPanel()
+    Private ReadOnly paymentsPage As New Panel()
+    Private ReadOnly paymentGrid As New ModernGrid()
+    Private ReadOnly lblPaymentsInfo As New Label()
+    Private ReadOnly lblPaymentsEmpty As New Label()
+    Private ReadOnly btnPrintReceipt As New Button()
+    Private ReadOnly btnVoid As New Button()
+    Private history As New List(Of BusinessPermitPayment)
+    Private loadingPayments As Boolean
     Private ReadOnly detailBody As New Panel()
     Private ReadOnly detailContent As New Panel()
     Private ReadOnly lblDetailEmpty As New Label()
@@ -65,6 +90,9 @@ Public Class BusinessPermitView
     Private selected As BusinessPermit
     Private loading As Boolean
     Private ReadOnly canManage As Boolean = AccessService.CanManage(AppScreen.BusinessPermits)
+    ''' <summary>Record Payment / Void follow AccessService's payment rule (shared with RPT).</summary>
+    Private ReadOnly canCollect As Boolean = AccessService.CanCollectPayments(AppScreen.BusinessPermits)
+    Private ReadOnly canVoid As Boolean = AccessService.CanVoidPayments(AppScreen.BusinessPermits)
 
     Public Sub New()
         SuspendLayout()
@@ -144,6 +172,7 @@ Public Class BusinessPermitView
         actions.BackColor = Theme.ContentBackground
         SetupButton(btnDelete, "Delete", "Delete", "danger", AddressOf Delete_Click, Session.IsAdmin)
         SetupButton(btnStatus, "Update Status", "Status", "secondary", AddressOf Status_Click, canManage)
+        SetupButton(btnPay, "Record Payment", "Pay", "secondary", AddressOf Pay_Click, canCollect)
         SetupButton(btnView, If(canManage, "View / Edit", "View Details"), "View", "secondary", AddressOf View_Click, True)
         SetupButton(btnRenew, "Renew Permit", "Renew", "secondary", AddressOf Renew_Click, True)
         SetupButton(btnNew, "New Application", "New", "primary", AddressOf New_Click, True)
@@ -247,7 +276,7 @@ Public Class BusinessPermitView
         UiHelper.AddGridColumn(grid, "Type", "TYPE", "AppType", 75, 70)
         UiHelper.AddGridColumn(grid, "Status", "STATUS", "Status", 120, 110)
         UiHelper.AddGridColumn(grid, "Filed", "FILED", "Filed", 95, 90)
-        UiHelper.AddGridColumn(grid, "Total", "TOTAL DUE", "Total", 100, 90)
+        UiHelper.AddGridColumn(grid, "Balance", "BALANCE", "Balance", 100, 90)
         AddHandler grid.SelectionChanged, AddressOf Grid_SelectionChanged
         AddHandler grid.CellDoubleClick, Sub(s, e) If e.RowIndex >= 0 Then View_Click(Nothing, EventArgs.Empty)
         AddHandler grid.Resize, Sub() FitGridColumns()
@@ -271,7 +300,7 @@ Public Class BusinessPermitView
         Dim s = DeviceDpi / 96.0
         grid.Columns("Type").Visible = grid.Width >= 330 * s
         grid.Columns("Year").Visible = grid.Width >= 400 * s
-        grid.Columns("Total").Visible = grid.Width >= 520 * s
+        grid.Columns("Balance").Visible = grid.Width >= 520 * s
         grid.Columns("Filed").Visible = grid.Width >= 620 * s
     End Sub
 
@@ -299,7 +328,7 @@ Public Class BusinessPermitView
         Dim gap1 As New Panel With {.Dock = DockStyle.Top, .Height = 6, .BackColor = Color.White}
 
         tabs.Dock = DockStyle.Top
-        tabs.Tabs = {"Endorsements", "Requirements", "Assessment"}
+        tabs.Tabs = {"Endorsements", "Requirements", "Assessment", "Payments"}
         AddHandler tabs.SelectedIndexChanged, Sub() ShowTab()
         Dim gap2 As New Panel With {.Dock = DockStyle.Top, .Height = 8, .BackColor = Color.White}
 
@@ -310,7 +339,8 @@ Public Class BusinessPermitView
         requirements.Dock = DockStyle.Fill
         assessmentList.Dock = DockStyle.Fill
         assessmentList.BackColor = Color.White
-        detailBody.Controls.AddRange({endorsementList, requirements, assessmentList})
+        BuildPaymentsPage()
+        detailBody.Controls.AddRange({endorsementList, requirements, assessmentList, paymentsPage})
         AddHandler requirements.RequirementsChanged, Sub() ReloadKeepingSelection()
 
         lblDetailEmpty.Dock = DockStyle.Fill
@@ -400,8 +430,8 @@ Public Class BusinessPermitView
                               (p.ReferenceNo & " " & p.PermitYear & " " & p.ApplicationType & " " & p.Status).ToLowerInvariant().Contains(term)).
             Select(Function(p) New PermitRow With {
                 .PermitId = p.PermitId, .Reference = p.ReferenceNo, .Year = p.PermitYear, .AppType = p.ApplicationType,
-                .Status = p.Status, .Filed = UiHelper.FormatDate(p.DateFiled),
-                .Total = If(p.AssessedAmount > 0, UiHelper.FormatMoney(BusinessPermitService.GetTotalDue(p)), "—")
+                .Status = BusinessTaxService.GetDisplayStatus(p), .Filed = UiHelper.FormatDate(p.DateFiled),
+                .Balance = BalanceText(p)
             }).ToList()
 
         loading = True
@@ -470,14 +500,20 @@ Public Class BusinessPermitView
             cardDue.SetValue("—", "", "Nothing to pay")
             Return
         End If
-        cardLatest.SetValue(latest.ReferenceNo, latest.Status, latest.ApplicationType & " · " & latest.PermitYear)
+        cardLatest.SetValue(latest.ReferenceNo, BusinessTaxService.GetDisplayStatus(latest), latest.ApplicationType & " · " & latest.PermitYear)
 
-        Dim total = BusinessPermitService.GetTotalDue(latest)
+        Dim bal = BusinessTaxService.GetBalance(latest, Date.Today)
         Select Case latest.Status
             Case BusinessPermitService.Assessed
-                cardDue.SetValue(UiHelper.FormatMoney(total), "Unpaid", latest.ReferenceNo)
+                If bal.IsPartiallyPaid Then
+                    cardDue.SetValue(UiHelper.FormatMoney(bal.Balance), StatusService.PartiallyPaid,
+                                     UiHelper.FormatMoney(bal.TotalPaid) & " paid · " & latest.ReferenceNo)
+                Else
+                    cardDue.SetValue(UiHelper.FormatMoney(bal.Balance), "Unpaid", latest.ReferenceNo)
+                End If
             Case BusinessPermitService.Paid, BusinessPermitService.Issued
-                cardDue.SetValue(UiHelper.FormatMoney(total), "Paid", latest.ReferenceNo)
+                cardDue.SetValue(UiHelper.FormatMoney(If(bal.IsLegacy, BusinessPermitService.GetTotalDue(latest), bal.TotalPaid)), "Paid",
+                                 latest.ReferenceNo)
             Case Else
                 Dim deadline = BusinessPermitService.GetRenewalDeadline(latest.PermitYear)
                 Dim late = latest.ApplicationType = "Renewal" AndAlso Date.Today > deadline
@@ -505,6 +541,10 @@ Public Class BusinessPermitView
             If(BusinessPermitService.IsFinal(selected.Status), selected.ReferenceNo & " is already " & selected.Status & ". Its status can no longer change.", Nothing)))
         UiHelper.SetAvailable(btnDelete, If(selected Is Nothing, noSelection,
             If(selected.Status <> BusinessPermitService.Submitted, "Only applications that are still Submitted can be deleted. " & selected.ReferenceNo & " is " & selected.Status & ".", Nothing)))
+        If canCollect Then
+            UiHelper.SetAvailable(btnPay, If(selected Is Nothing, noSelection, BusinessTaxService.GetPaymentBlocker(selected)))
+            tips.SetToolTip(btnPay, "Record a business tax payment (full or partial) for the selected application")
+        End If
     End Sub
 
     Private Sub ShowDetails()
@@ -518,7 +558,7 @@ Public Class BusinessPermitView
         End If
 
         lblDetailRef.Text = selected.ReferenceNo
-        badgeDetail.Text = selected.Status
+        badgeDetail.Text = BusinessTaxService.GetDisplayStatus(selected)
         badgeDetail.Visible = True
         badgeDetail.Location = New Point(lblDetailRef.Right + 10, 4)
         lblDetailInfo.Text = selected.ApplicationType & " · " & selected.PermitYear & " · filed " & UiHelper.FormatDate(selected.DateFiled) &
@@ -535,6 +575,7 @@ Public Class BusinessPermitView
                              allowUpload:=Not isFinal AndAlso (Session.IsOwner OrElse canManage),
                              allowVerify:=Not isFinal)
         assessmentList.SetRows(CreateAssessmentRows(selected))
+        LoadPaymentHistory()
         ShowTab()
     End Sub
 
@@ -542,6 +583,7 @@ Public Class BusinessPermitView
         endorsementList.Visible = tabs.SelectedIndex = 0
         requirements.Visible = tabs.SelectedIndex = 1
         assessmentList.Visible = tabs.SelectedIndex = 2
+        paymentsPage.Visible = tabs.SelectedIndex = 3
         detailBody.PerformLayout()        ' size the newly shown tab right away
         requirements.PerformLayout()
     End Sub
@@ -610,10 +652,22 @@ Public Class BusinessPermitView
         rows.Add(InfoRow(If(p.ApplicationType = "New", "Capital investment", "Gross receipts (previous year)"),
                          UiHelper.FormatMoney(p.GrossReceipts),
                          "Assessed business tax", If(assessed, UiHelper.FormatMoney(p.AssessedAmount), "Not yet assessed")))
-        rows.Add(InfoRow("Surcharge (late renewal)", If(assessed, UiHelper.FormatMoney(p.Surcharge), "—"),
-                         "Interest (late renewal)", If(assessed, UiHelper.FormatMoney(p.Interest), "—")))
-        rows.Add(InfoRow("Total due", If(assessed, UiHelper.FormatMoney(BusinessPermitService.GetTotalDue(p)), "—"),
-                         "Renewal deadline", If(p.ApplicationType = "Renewal", UiHelper.FormatDate(deadline), "Not applicable (new)")))
+        Dim bal = BusinessTaxService.GetBalance(p, Date.Today)
+        Dim settled = bal.IsFullyPaid AndAlso Not bal.IsLegacy
+        If bal.IsLegacy Then
+            rows.Add(InfoRow("Surcharge (late renewal)", UiHelper.FormatMoney(p.Surcharge), "Interest (late renewal)", UiHelper.FormatMoney(p.Interest)))
+            rows.Add(InfoRow("Total paid", UiHelper.FormatMoney(BusinessPermitService.GetTotalDue(p)), "Balance", UiHelper.FormatMoney(0D)))
+        ElseIf assessed AndAlso bal.IsAssessed Then
+            rows.Add(InfoRow("Surcharge (late renewal)", UiHelper.FormatMoney(If(settled, bal.SurchargePaid, bal.SurchargeCharged)),
+                             If(settled, "Interest charged", "Interest (as of today)"),
+                             UiHelper.FormatMoney(bal.InterestPaid + If(settled, 0D, bal.InterestDue))))
+            rows.Add(InfoRow("Paid so far", UiHelper.FormatMoney(bal.TotalPaid) & If(bal.Payments.Count > 0, " (" & bal.Payments.Count & ")", ""),
+                             "Balance (if paid today)", UiHelper.FormatMoney(bal.Balance)))
+        Else
+            rows.Add(InfoRow("Surcharge (late renewal)", "—", "Interest (late renewal)", "—"))
+        End If
+        rows.Add(InfoRow("Renewal deadline", If(p.ApplicationType = "Renewal", UiHelper.FormatDate(deadline), "Not applicable (new)"),
+                         "Status", BusinessTaxService.GetDisplayStatus(p)))
         rows.Add(InfoRow("Mayor's Permit No.", If(p.MayorsPermitNo <> "", p.MayorsPermitNo, "—"),
                          "Valid until", UiHelper.FormatDate(p.ValidUntil)))
         rows.Add(InfoRow("Date filed", UiHelper.FormatDate(p.DateFiled), "Date issued", UiHelper.FormatDate(p.DateIssued)))
@@ -627,6 +681,16 @@ Public Class BusinessPermitView
             }
             tips.SetToolTip(note, note.Text)
             rows.Insert(0, note)
+        End If
+        If bal.IsLegacy Then
+            rows.Add(NoteRow(tips, "Paid before payment recording started - no payment rows or receipts in BizTracker.", Theme.TextMuted))
+        ElseIf p.Status = BusinessPermitService.Assessed AndAlso bal.Balance > 0 Then
+            Dim links As New List(Of RowLink)
+            If canCollect Then links.Add(New RowLink("Record Payment", Theme.SidebarBlue, Sub() Pay_Click(Nothing, EventArgs.Empty), "Pay"))
+            rows.Add(ListRow(tips, If(bal.IsPartiallyPaid, "Partially paid", "Not yet paid"),
+                             UiHelper.FormatMoney(bal.Balance) & " due today" & If(bal.InterestDue > 0, " (interest keeps running)", ""),
+                             If(bal.IsPartiallyPaid, StatusService.PartiallyPaid, "Unpaid"), links,
+                             If(bal.MonthsLate > 0, Theme.StatusRed, Nothing), If(canCollect, LinkColumnWidth("Record Payment"), 0)))
         End If
         Return rows
     End Function
@@ -707,6 +771,278 @@ Public Class BusinessPermitView
                                      "Next: upload the requirements in the Requirements tab.", "Application filed")
             End If
         End Using
+    End Sub
+
+    ''' <summary>Grid "BALANCE": what is still due today, "Paid" when settled, "—" before assessment.</summary>
+    Private Shared Function BalanceText(p As BusinessPermit) As String
+        If p.AssessedAmount <= 0 OrElse p.Status = BusinessPermitService.Rejected Then Return "—"
+        Dim bal = BusinessTaxService.GetBalance(p, Date.Today)
+        If Not bal.IsAssessed Then Return "—"
+        Return If(bal.IsFullyPaid, "Paid", UiHelper.FormatMoney(bal.Balance))
+    End Function
+
+    ' =====================================================================
+    '  Payments tab: business tax payments of the selected application
+    ' =====================================================================
+
+    Private Sub BuildPaymentsPage()
+        paymentsPage.Dock = DockStyle.Fill
+        paymentsPage.BackColor = Color.White
+
+        Dim bar As New Panel With {.Dock = DockStyle.Top, .Height = Dpi(44), .BackColor = Color.White}
+        lblPaymentsInfo.Font = Theme.SmallBoldFont
+        lblPaymentsInfo.ForeColor = Theme.TextMuted
+        lblPaymentsInfo.AutoEllipsis = True
+        lblPaymentsInfo.TextAlign = ContentAlignment.MiddleLeft
+        lblPaymentsInfo.BackColor = Color.White
+        btnPrintReceipt.Text = "Print Receipt"
+        UiHelper.StyleSecondaryButton(btnPrintReceipt)
+        btnVoid.Text = "Void"
+        UiHelper.StyleDangerButton(btnVoid)
+        btnVoid.Visible = canVoid
+        AddHandler btnPrintReceipt.Click, AddressOf PrintReceipt_Click
+        AddHandler btnVoid.Click, AddressOf VoidPayment_Click
+        bar.Controls.AddRange({lblPaymentsInfo, btnPrintReceipt, btnVoid})
+        AddHandler bar.Layout,
+            Sub()
+                Dim h = Dpi(34)
+                Dim top = (bar.ClientSize.Height - h) \ 2
+                Dim right = bar.ClientSize.Width
+                If btnVoid.Visible Then
+                    Dim w = UiHelper.TextWidth(btnVoid.Text, Theme.BodyBoldFont) + Dpi(30)
+                    btnVoid.SetBounds(right - w, top, w, h)
+                    right = btnVoid.Left - Dpi(8)
+                End If
+                Dim pw = UiHelper.TextWidth(btnPrintReceipt.Text, Theme.BodyBoldFont) + Dpi(30)
+                btnPrintReceipt.SetBounds(right - pw, top, pw, h)
+                lblPaymentsInfo.SetBounds(0, top, Math.Max(0, btnPrintReceipt.Left - Dpi(10)), h)
+            End Sub
+
+        UiHelper.StyleGrid(paymentGrid, "Status")
+        paymentGrid.Dock = DockStyle.Fill
+        UiHelper.AddGridColumn(paymentGrid, "PaymentDate", "DATE", "PaymentDate", 95, 70)
+        UiHelper.AddGridColumn(paymentGrid, "OrNo", "OR NO.", "OrNo", 85, 85)
+        UiHelper.AddGridColumn(paymentGrid, "Method", "METHOD", "Method", 95, 95)
+        UiHelper.AddGridColumn(paymentGrid, "Reference", "REFERENCE", "Reference", 120, 110)
+        UiHelper.AddGridColumn(paymentGrid, "Tax", "TAX", "Tax", 95, 95)
+        UiHelper.AddGridColumn(paymentGrid, "Charges", "SURCH. + INT.", "Charges", 100, 100)
+        UiHelper.AddGridColumn(paymentGrid, "Total", "TOTAL", "Total", 100, 100)
+        UiHelper.AddGridColumn(paymentGrid, "ReceivedBy", "RECEIVED BY", "ReceivedBy", 130, 120)
+        UiHelper.AddGridColumn(paymentGrid, "Status", "STATUS", "Status", 90, UiHelper.TextWidth(PaymentRules.Voided, Theme.SmallBoldFont) + 36)
+        For Each colName In {"Tax", "Charges", "Total"}
+            paymentGrid.Columns(colName).DefaultCellStyle.Alignment = DataGridViewContentAlignment.MiddleRight
+            paymentGrid.Columns(colName).HeaderCell.Style.Alignment = DataGridViewContentAlignment.MiddleRight
+        Next
+        AddHandler paymentGrid.SelectionChanged, Sub() If Not loadingPayments Then UpdatePaymentButtons()
+        AddHandler paymentGrid.CellToolTipTextNeeded, AddressOf PaymentGrid_CellToolTipTextNeeded
+        AddHandler paymentGrid.CellDoubleClick, Sub(s, e) If e.RowIndex >= 0 Then PrintReceipt_Click(Nothing, EventArgs.Empty)
+        AddHandler paymentGrid.Resize, Sub() FitPaymentColumns()
+
+        lblPaymentsEmpty.Dock = DockStyle.Fill
+        lblPaymentsEmpty.TextAlign = ContentAlignment.MiddleCenter
+        lblPaymentsEmpty.Font = Theme.BodyFont
+        lblPaymentsEmpty.ForeColor = Theme.TextMuted
+        lblPaymentsEmpty.BackColor = Color.White
+        lblPaymentsEmpty.Visible = False
+
+        paymentsPage.Controls.Add(lblPaymentsEmpty)
+        paymentsPage.Controls.Add(paymentGrid)
+        paymentsPage.Controls.Add(bar)
+    End Sub
+
+    ''' <summary>Hides the less important columns when the card is narrow (date, OR, total and status always stay).</summary>
+    Private Sub FitPaymentColumns()
+        Dim s = DeviceDpi / 96.0
+        Dim w = paymentGrid.Width
+        paymentGrid.Columns("Tax").Visible = w >= 480 * s
+        paymentGrid.Columns("Charges").Visible = w >= 580 * s
+        paymentGrid.Columns("Method").Visible = w >= 675 * s
+        paymentGrid.Columns("ReceivedBy").Visible = w >= 795 * s
+        paymentGrid.Columns("Reference").Visible = w >= 905 * s
+    End Sub
+
+    ''' <summary>"Jun 25" for this year's payments, "Jan 5, 2025" for older ones.</summary>
+    Private Shared Function PaymentDateText(value As Date) As String
+        Return If(value.Year = Date.Today.Year, value.ToString("MMM d"), UiHelper.FormatDate(value))
+    End Function
+
+    Private Sub LoadPaymentHistory()
+        history = If(selected Is Nothing, New List(Of BusinessPermitPayment)(), BusinessTaxService.GetPaymentHistory(selected.PermitId))
+        Dim rows = history.Select(Function(x) New PaymentGridRow With {
+            .PaymentId = x.PaymentId, .PaymentDate = PaymentDateText(x.PaymentDate), .OrNo = x.OrNo, .Method = x.PaymentMethod,
+            .Reference = If(x.ReferenceNo = "", "—", x.ReferenceNo), .Tax = UiHelper.FormatMoney(x.AmountPaid),
+            .Charges = UiHelper.FormatMoney(x.Surcharge + x.Interest), .Total = UiHelper.FormatMoney(x.Total),
+            .ReceivedBy = If(x.ReceivedByName = "", "—", x.ReceivedByName),
+            .Status = If(x.IsVoided, PaymentRules.Voided, StatusService.Paid), .IsVoided = x.IsVoided
+        }).ToList()
+        paymentGrid.Columns("PaymentDate").MinimumWidth =
+            Math.Max(Dpi(70), rows.Select(Function(r) UiHelper.TextWidth(r.PaymentDate, Theme.BodyFont) + Dpi(22)).DefaultIfEmpty(0).Max())
+        loadingPayments = True
+        paymentGrid.DataSource = rows
+        For Each gridRow As DataGridViewRow In paymentGrid.Rows
+            If TryCast(gridRow.DataBoundItem, PaymentGridRow)?.IsVoided Then gridRow.DefaultCellStyle.ForeColor = Theme.TextMuted
+        Next
+        FitPaymentColumns()
+        paymentGrid.ClearSelection()
+        If paymentGrid.Rows.Count > 0 Then
+            paymentGrid.CurrentCell = paymentGrid.Rows(0).Cells("PaymentDate")
+            paymentGrid.Rows(0).Selected = True
+        End If
+        loadingPayments = False
+
+        Dim active = history.Where(Function(x) Not x.IsVoided).ToList()
+        Dim voidedCount = history.Count - active.Count
+        lblPaymentsInfo.Text = If(history.Count = 0, "",
+            active.Count & " payment" & If(active.Count = 1, "", "s") & " · " & UiHelper.FormatMoney(active.Sum(Function(x) x.Total)) & " collected" &
+            If(voidedCount > 0, " · " & voidedCount & " voided", ""))
+        tips.SetToolTip(lblPaymentsInfo, lblPaymentsInfo.Text)
+        lblPaymentsEmpty.Visible = history.Count = 0
+        lblPaymentsEmpty.Text = If(selected IsNot Nothing AndAlso selected.LegacyPaid,
+                                   "Paid before payment recording started." & vbCrLf & "There are no payment rows for this application.",
+                                   "No business tax payments recorded yet." &
+                                   If(canCollect, vbCrLf & "Use ""Record Payment"" once the application is Assessed.", ""))
+        If lblPaymentsEmpty.Visible Then lblPaymentsEmpty.BringToFront()
+        UpdatePaymentButtons()
+    End Sub
+
+    Private ReadOnly Property SelectedPayment As BusinessPermitPayment
+        Get
+            If paymentGrid.SelectedRows.Count = 0 Then Return Nothing
+            Dim gridRow = TryCast(paymentGrid.SelectedRows(0).DataBoundItem, PaymentGridRow)
+            Return If(gridRow Is Nothing, Nothing, history.FirstOrDefault(Function(x) x.PaymentId = gridRow.PaymentId))
+        End Get
+    End Property
+
+    Private Sub SelectPayment(paymentId As Integer)
+        For Each gridRow As DataGridViewRow In paymentGrid.Rows
+            If TryCast(gridRow.DataBoundItem, PaymentGridRow)?.PaymentId = paymentId Then
+                paymentGrid.ClearSelection()
+                paymentGrid.CurrentCell = gridRow.Cells("PaymentDate")
+                gridRow.Selected = True
+                Exit For
+            End If
+        Next
+        UpdatePaymentButtons()
+    End Sub
+
+    Private Sub UpdatePaymentButtons()
+        Dim pay = SelectedPayment
+        UiHelper.SetAvailable(btnPrintReceipt,
+            If(pay Is Nothing, "Select a payment in the list first.",
+               If(pay.IsVoided, "OR " & pay.OrNo & " was voided - a voided receipt cannot be printed.", Nothing)))
+        tips.SetToolTip(btnPrintReceipt, "Print the official receipt of the selected payment")
+        If Not canVoid Then Return
+        Dim blocker As String = Nothing
+        If pay Is Nothing Then
+            blocker = "Select a payment in the list first."
+        ElseIf pay.IsVoided Then
+            blocker = "OR " & pay.OrNo & " is already voided."
+        ElseIf selected IsNot Nothing AndAlso selected.Status = BusinessPermitService.Issued AndAlso
+               Not AccessService.CanVoidPayments(AppScreen.BusinessPermits, afterPermitIssued:=True) Then
+            blocker = "The Mayor's Permit is already issued - only an Admin can void its payments."
+        Else
+            Dim newest = history.Where(Function(x) Not x.IsVoided).OrderByDescending(Function(x) x.PaymentId).First()
+            If newest.PaymentId <> pay.PaymentId Then blocker = "Only the newest payment can be voided - void OR " & newest.OrNo & " first."
+        End If
+        UiHelper.SetAvailable(btnVoid, blocker)
+        tips.SetToolTip(btnVoid, "Void the selected payment (mistake correction) - it stays in the history")
+    End Sub
+
+    Private Sub PaymentGrid_CellToolTipTextNeeded(sender As Object, e As DataGridViewCellToolTipTextNeededEventArgs)
+        If e.RowIndex < 0 OrElse e.RowIndex >= paymentGrid.Rows.Count Then Return
+        Dim gridRow = TryCast(paymentGrid.Rows(e.RowIndex).DataBoundItem, PaymentGridRow)
+        Dim pay = If(gridRow Is Nothing, Nothing, history.FirstOrDefault(Function(x) x.PaymentId = gridRow.PaymentId))
+        If pay Is Nothing Then Return
+        Dim lines As New List(Of String) From {
+            "OR " & pay.OrNo & " · " & UiHelper.FormatDate(pay.PaymentDate),
+            UiHelper.FormatMoney(pay.AmountPaid) & " tax + " & UiHelper.FormatMoney(pay.Surcharge) & " surcharge + " &
+                UiHelper.FormatMoney(pay.Interest) & " interest = " & UiHelper.FormatMoney(pay.Total),
+            pay.PaymentMethod & If(pay.ReferenceNo <> "", " · Ref. " & pay.ReferenceNo, "") &
+                If(pay.ReceivedByName <> "", " · received by " & pay.ReceivedByName, "")
+        }
+        If pay.Remarks <> "" Then lines.Add("Remarks: " & pay.Remarks)
+        If pay.IsVoided Then
+            lines.Add("VOIDED " & UiHelper.FormatDate(pay.VoidedAt) & If(pay.VoidedByName <> "", " by " & pay.VoidedByName, "") & ": " & pay.VoidReason)
+        End If
+        e.ToolTipText = String.Join(vbCrLf, lines)
+    End Sub
+
+    Private Sub Pay_Click(sender As Object, e As EventArgs)
+        If selected Is Nothing OrElse Not canCollect Then Return
+        Dim current = CopyOf(selected)
+        Dim blocker = If(current Is Nothing, "This application no longer exists.", BusinessTaxService.GetPaymentBlocker(current))
+        If blocker IsNot Nothing Then
+            UiHelper.ShowWarning(blocker)
+            Return
+        End If
+        Dim result As BusinessTaxPaymentResult
+        Using dlg As New BusinessPermitPaymentDialog(current)
+            If dlg.ShowDialog(FindForm()) <> DialogResult.OK Then Return
+            result = dlg.Result
+        End Using
+        LoadPermits(current.PermitId)
+        tabs.SelectedIndex = 3          ' Payments: the new payment is at the top, ready to print
+        SelectPayment(result.Payment.PaymentId)
+
+        Dim pay = result.Payment
+        Dim message = "OR " & pay.OrNo & " recorded: " & UiHelper.FormatMoney(pay.Total) &
+                      If(pay.Surcharge + pay.Interest > 0, " (" & UiHelper.FormatMoney(pay.Interest) & " interest + " &
+                         UiHelper.FormatMoney(pay.Surcharge) & " surcharge + " & UiHelper.FormatMoney(pay.AmountPaid) & " tax)", "") & "."
+        If result.BecamePaid Then
+            message &= vbCrLf & current.ReferenceNo & " is now fully paid and marked Paid." & vbCrLf &
+                       "Next: issue the Mayor's Permit with ""Update Status""."
+        Else
+            Dim left = BusinessTaxService.GetBalance(selected, Date.Today).Balance
+            message &= vbCrLf & UiHelper.FormatMoney(left) & " is still due on " & current.ReferenceNo & " (partial payment)."
+        End If
+        message &= vbCrLf & "Click ""Print Receipt"" in the Payments tab for a printed copy."
+        UiHelper.ShowSuccess(message, "Payment recorded")
+    End Sub
+
+    Private Sub PrintReceipt_Click(sender As Object, e As EventArgs)
+        Dim pay = SelectedPayment
+        If pay Is Nothing Then Return
+        Dim doc = DocumentService.GetBusinessTaxReceipt(pay.PaymentId)
+        Dim blocker = If(doc Is Nothing, "This receipt is not available.", DocumentService.GetPrintBlocker(doc))
+        If blocker IsNot Nothing Then
+            UiHelper.ShowWarning(blocker, "Cannot print")
+            Return
+        End If
+        Dim printed = ReportService.Print(doc)
+        If printed.ErrorMessage IsNot Nothing Then UiHelper.ShowWarning(printed.ErrorMessage, "Cannot print")
+    End Sub
+
+    Private Sub VoidPayment_Click(sender As Object, e As EventArgs)
+        Dim pay = SelectedPayment
+        If pay Is Nothing OrElse Not canVoid Then Return
+        Dim impact = BusinessTaxService.GetVoidImpact(pay.PaymentId)
+        If impact.Blocker IsNot Nothing Then
+            UiHelper.ShowWarning(impact.Blocker, "Cannot void")
+            Return
+        End If
+
+        Dim message = "OR " & pay.OrNo & " · " & UiHelper.FormatMoney(pay.Total) & " paid " & UiHelper.FormatDate(pay.PaymentDate) & vbCrLf &
+                      "It stays in the history as Voided, no longer counts toward the balance, and its OR number stays used."
+        If impact.RevertsToAssessed Then message &= vbCrLf & impact.Permit.ReferenceNo & " goes back from Paid to Assessed."
+        If impact.IssuedWarning IsNot Nothing Then message &= vbCrLf & vbCrLf & "WARNING: " & impact.IssuedWarning
+        If Not UiHelper.Confirm(message, "Void OR " & pay.OrNo & "?", "Continue", "Cancel", danger:=True) Then Return
+
+        Dim reason = PromptDialog.Ask(FindForm(), "Void Payment", "OR " & pay.OrNo & " · " & impact.Permit.ReferenceNo & " · " & UiHelper.FormatMoney(pay.Total),
+                                      "Reason for voiding (required, e.g. wrong amount entered)", True, "Void Payment", "danger")
+        If reason Is Nothing Then Return
+        Dim problem = BusinessTaxService.VoidPayment(pay.PaymentId, reason)
+        If problem IsNot Nothing Then
+            UiHelper.ShowWarning(problem, "Cannot void")
+            Return
+        End If
+
+        LoadPermits(pay.PermitId)
+        tabs.SelectedIndex = 3
+        SelectPayment(pay.PaymentId)
+        UiHelper.ShowSuccess("OR " & pay.OrNo & " was voided. It stays in the payment history; its OR number stays used." &
+                             If(impact.RevertsToAssessed, vbCrLf & impact.Permit.ReferenceNo & " is Assessed again.", "") &
+                             If(impact.IssuedWarning IsNot Nothing, vbCrLf & impact.IssuedWarning & " This was noted in the audit log.", "") &
+                             vbCrLf & "Next: record the correct payment with ""Record Payment"".", "Payment voided")
     End Sub
 
     ''' <summary>Dialogs work on a copy so a cancelled/failed change does not alter the list.</summary>

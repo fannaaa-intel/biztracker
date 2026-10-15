@@ -184,6 +184,7 @@ Public NotInheritable Class BusinessPermitRepository
             .AssessedAmount = row.GetDecimal("assessed_amount"),
             .Surcharge = row.GetDecimal("surcharge"),
             .Interest = row.GetDecimal("interest"),
+            .LegacyPaid = row.GetBool("legacy_paid"),
             .MayorsPermitNo = row.GetString("mayors_permit_no"),
             .DateFiled = row.GetDate("date_filed"),
             .DateIssued = row.GetNullableDate("date_issued"),

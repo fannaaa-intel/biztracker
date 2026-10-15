@@ -89,9 +89,6 @@ Public Class UpdateStatusDialog
             Case BusinessPermitService.Issued
                 Return "Payment received. A Mayor's Permit number will be generated, valid until Dec 31, " &
                        permit.PermitYear & "."
-            Case BusinessPermitService.Paid
-                Return "Mark as paid: total due " & UiHelper.FormatMoney(BusinessPermitService.GetTotalDue(permit)) &
-                       " (interest is updated to today)."
             Case Else
                 Return "Ready to move to " & nextStatus & "."
         End Select

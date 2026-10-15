@@ -9,8 +9,10 @@ Public Class BusinessPermit
     Public Property Status As String = "Submitted"
     Public Property GrossReceipts As Decimal
     Public Property AssessedAmount As Decimal
-    Public Property Surcharge As Decimal
+    Public Property Surcharge As Decimal             ' late-renewal surcharge (snapshot; final amount charged once fully paid)
     Public Property Interest As Decimal
+    ''' <summary>Paid / Issued before payments were recorded in BizTracker (no payment rows; counts as fully paid).</summary>
+    Public Property LegacyPaid As Boolean
     Public Property MayorsPermitNo As String = ""    ' MP-YYYY-00001, set when Issued
     Public Property DateFiled As Date
     Public Property DateIssued As Date?

@@ -248,6 +248,7 @@ Public Class PermitVaultView
         Select Case d.Kind
             Case DocumentKinds.OrderOfPayment : Return "Order of Payment"
             Case DocumentKinds.OfficialReceipt : Return "Official Receipt"
+            Case DocumentKinds.BusinessTaxReceipt : Return "OR - Business Tax"
             Case DocumentKinds.TaxClearance : Return "Tax Clearance"
             Case DocumentKinds.InspectionCertificate : Return "Inspection Cert."
             Case DocumentKinds.ConstructionClearance

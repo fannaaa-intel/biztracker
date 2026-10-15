@@ -185,16 +185,6 @@ Public Class PaymentPreview
     End Property
 End Class
 
-''' <summary>What the cashier typed in the Record Payment dialog.</summary>
-Public Class RptPaymentInput
-    Public Property PaymentDate As Date = Date.Today
-    Public Property Amount As Decimal
-    Public Property Method As String = PaymentMethods.Cash
-    Public Property ReferenceNo As String = ""
-    Public Property OrNo As String = ""
-    Public Property Remarks As String = ""
-End Class
-
 ''' <summary>Outcome of RptService.RecordPayment.</summary>
 Public Class RptPaymentResult
     ''' <summary>Nothing when the payment was saved.</summary>
@@ -242,13 +232,8 @@ Public NotInheritable Class RptService
     Public Const NotAssessed As String = "Not Assessed"
     Public Const ClearanceIssued As String = "Issued"
     Public Const ClearanceNotIssued As String = "Not Issued"
-    Public Const Voided As String = "Voided"
-    Public Const Active As String = "Active"
-
-    Public Const MaxOrNoLength As Integer = 30          ' rpt_payments.or_no
-    Public Const MaxReferenceLength As Integer = 50     ' rpt_payments.reference_no
-    Public Const MaxRemarksLength As Integer = 255      ' rpt_payments.remarks
-    Public Const MaxVoidReasonLength As Integer = 200
+    Public Const Voided As String = PaymentRules.Voided
+    Public Const Active As String = PaymentRules.Active
 
     ''' <summary>
     ''' THE PAYMENT ORDER RULE (one place): True = a payment pays the penalty due first, then the principal.
@@ -646,55 +631,16 @@ Public NotInheritable Class RptService
     ''' Checks what the cashier typed. Keys: "date", "amount", "method", "reference", "or", "remarks".
     ''' The OR number is checked against every payment (voided ones keep their number).
     ''' </summary>
-    Public Shared Function ValidatePayment(row As RptLedgerRow, q As RptQuarter, input As RptPaymentInput) As Dictionary(Of String, String)
-        Dim errors As New Dictionary(Of String, String)
-        Dim payDate = input.PaymentDate.Date
-
-        ' Date: not in the future, within the tax year or later, not before the bill's last payment
-        If payDate > Date.Today Then
-            errors("date") = "Cannot be in the future."
-        ElseIf row IsNot Nothing AndAlso row.IsAssessed AndAlso payDate < GetEarliestPaymentDate(row) Then
-            Dim earliest = GetEarliestPaymentDate(row)
-            errors("date") = If(Not row.ActivePayments.Any(), "Must be in " & row.Assessment.TaxYear & " or later.",
-                                "Not before " & UiHelper.FormatDate(earliest) & " (last payment).")
+    Public Shared Function ValidatePayment(row As RptLedgerRow, q As RptQuarter, input As PaymentInput) As Dictionary(Of String, String)
+        Dim earliest = Date.MinValue
+        Dim earliestMessage = ""
+        If row IsNot Nothing AndAlso row.IsAssessed Then
+            earliest = GetEarliestPaymentDate(row)
+            earliestMessage = If(Not row.ActivePayments.Any(), "Must be in " & row.Assessment.TaxYear & " or later.",
+                                 "Not before " & UiHelper.FormatDate(earliest) & " (last payment).")
         End If
-
-        ' Amount: more than 0, whole centavos, at most what is due on that date
-        If input.Amount <= 0D Then
-            errors("amount") = "Enter more than 0."
-        ElseIf Math.Round(input.Amount, 2) <> input.Amount Then
-            errors("amount") = "At most 2 decimals."
-        ElseIf q IsNot Nothing AndAlso Not errors.ContainsKey("date") Then
-            Dim due = PreviewPayment(q, payDate, input.Amount).TotalDue
-            If input.Amount > due Then errors("amount") = "Balance is only " & UiHelper.FormatMoney(due) & "."
-        End If
-
-        ' Method + reference
-        If Not PaymentMethods.All.Contains(input.Method) Then
-            errors("method") = "Choose how it was paid."
-        ElseIf PaymentMethods.NeedsReference(input.Method) Then
-            Dim reference = If(input.ReferenceNo, "").Trim()
-            If reference = "" Then
-                errors("reference") = "Enter the " & If(input.Method = PaymentMethods.Check, "check number.", "transaction reference no.")
-            ElseIf reference.Length > MaxReferenceLength Then
-                errors("reference") = "At most " & MaxReferenceLength & " characters."
-            End If
-        End If
-
-        ' OR number from the AF 51 booklet
-        Dim orNo = If(input.OrNo, "").Trim()
-        If orNo = "" Then
-            errors("or") = "Type the AF 51 OR number."
-        ElseIf orNo.Length > MaxOrNoLength Then
-            errors("or") = "At most " & MaxOrNoLength & " characters."
-        ElseIf Not Text.RegularExpressions.Regex.IsMatch(orNo, "^[A-Za-z0-9-]+$") Then
-            errors("or") = "Letters, numbers, dashes only."
-        ElseIf RptRepository.OrNoExists(orNo) Then
-            errors("or") = "OR " & orNo & " already used."
-        End If
-
-        If If(input.Remarks, "").Trim().Length > MaxRemarksLength Then errors("remarks") = "At most " & MaxRemarksLength & " characters."
-        Return errors
+        Return PaymentRules.ValidateCommon(input, earliest, earliestMessage,
+                                           If(q Is Nothing, Nothing, Function(d As Date) PreviewPayment(q, d, input.Amount).TotalDue))
     End Function
 
     ''' <summary>
@@ -703,9 +649,9 @@ Public NotInheritable Class RptService
     ''' left unpaid afterwards, the RPT endorsement on the business permit application is set to Endorsed in the SAME
     ''' transaction as the payment.
     ''' </summary>
-    Public Shared Function RecordPayment(assessmentId As Integer, quarter As Integer, input As RptPaymentInput) As RptPaymentResult
+    Public Shared Function RecordPayment(assessmentId As Integer, quarter As Integer, input As PaymentInput) As RptPaymentResult
         Dim result As New RptPaymentResult
-        If Not AccessService.CanManage(AppScreen.RealPropertyTax) Then
+        If Not AccessService.CanCollectPayments(AppScreen.RealPropertyTax) Then
             result.ErrorMessage = "You are not allowed to record payments."
             Return result
         End If
@@ -743,7 +689,10 @@ Public NotInheritable Class RptService
                                                                         "RPT dues paid as of " & Date.Today.ToString("MMM d, yyyy")))
 
         Dim newId = RptRepository.SavePayment(pay, row.ActivePayments.Count(), row.ActivePayments.Sum(Function(x) x.Total), endorsement)
-        If newId = 0 Then
+        If newId = -2 Then
+            result.ErrorMessage = PaymentRules.OrTakenMessage(pay.OrNo)
+            Return result
+        ElseIf newId = 0 Then
             result.ErrorMessage = "Another payment for this property was saved or voided while you were typing. " &
                                   "Close this window and open Record Payment again."
             Return result
@@ -780,7 +729,7 @@ Public NotInheritable Class RptService
             Return impact
         End If
         Dim prop = PropertyRepository.GetById(pay.PropertyId)
-        If Not AccessService.CanManage(AppScreen.RealPropertyTax) OrElse prop Is Nothing OrElse
+        If Not AccessService.CanVoidPayments(AppScreen.RealPropertyTax) OrElse prop Is Nothing OrElse
            Not AccessService.CanSeeBusiness(prop.BusinessId) Then
             impact.Blocker = "Only the Assessor's Office or an Admin can void payments."
             Return impact
@@ -820,9 +769,9 @@ Public NotInheritable Class RptService
     ''' no longer counts toward the balance, and its OR number stays used. Returns an error message, or Nothing.
     ''' </summary>
     Public Shared Function VoidPayment(paymentId As Integer, reason As String) As String
-        reason = If(reason, "").Trim()
-        If reason = "" Then Return "Enter the reason for voiding."
-        If reason.Length > MaxVoidReasonLength Then Return "The reason can be at most " & MaxVoidReasonLength & " characters."
+        Dim reasonError = PaymentRules.ValidateVoidReason(reason)
+        If reasonError IsNot Nothing Then Return reasonError
+        reason = reason.Trim()
         Dim impact = GetVoidImpact(paymentId)
         If impact.Blocker IsNot Nothing Then Return impact.Blocker
         Dim pay = impact.Payment

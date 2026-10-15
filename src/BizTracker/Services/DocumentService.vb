@@ -46,7 +46,25 @@ Public NotInheritable Class DocumentService
     ''' </summary>
     Public Shared Function CanPrint(d As IssuedDocument) As Boolean
         If d Is Nothing OrElse Not AccessService.CanSeeBusiness(d.BusinessId) Then Return False
-        Return CanView() OrElse (d.Kind = DocumentKinds.OfficialReceipt AndAlso AccessService.CanAccess(AppScreen.RealPropertyTax))
+        Return CanView() OrElse (d.Kind = DocumentKinds.OfficialReceipt AndAlso AccessService.CanAccess(AppScreen.RealPropertyTax)) OrElse
+               (d.Kind = DocumentKinds.BusinessTaxReceipt AndAlso AccessService.CanAccess(AppScreen.BusinessPermits))
+    End Function
+
+    ''' <summary>The official receipt of one business tax payment (voided ones too), or Nothing if the user may not see it.</summary>
+    Public Shared Function GetBusinessTaxReceipt(paymentId As Integer) As IssuedDocument
+        Dim pay = BusinessPermitPaymentRepository.GetById(paymentId)
+        If pay Is Nothing OrElse Not AccessService.CanSeeBusiness(pay.BusinessId) Then Return Nothing
+        If Not CanView() AndAlso Not AccessService.CanAccess(AppScreen.BusinessPermits) Then Return Nothing
+        Dim b = BusinessRepository.GetById(pay.BusinessId)
+        If b Is Nothing Then Return Nothing
+        Dim list As New List(Of IssuedDocument)
+        AddBusinessTaxReceipts(b, list)
+        Dim d = list.FirstOrDefault(Function(x) x.RelatedId = paymentId)
+        If d IsNot Nothing Then
+            d.BusinessId = b.BusinessId
+            d.BusinessName = b.BusinessName
+        End If
+        Return d
     End Function
 
     ''' <summary>The official receipt of one RPT payment (voided ones too), or Nothing if the user may not see it.</summary>
@@ -128,19 +146,57 @@ Public NotInheritable Class DocumentService
             ' Tax Order of Payment: once the application is assessed
             If (p.Status = BusinessPermitService.Assessed OrElse p.Status = BusinessPermitService.Paid OrElse
                 p.Status = BusinessPermitService.Issued) AndAlso p.AssessedAmount > 0 Then
-                Dim paid = p.Status <> BusinessPermitService.Assessed
+                ' Live: what is still due today, after the payments already recorded
+                Dim bal = BusinessTaxService.GetBalance(p, Date.Today)
+                Dim status = If(bal.IsFullyPaid, "Paid", If(bal.IsPartiallyPaid, StatusService.PartiallyPaid, "Unpaid"))
                 Dim d = NewDoc(DocumentKinds.OrderOfPayment, "Tax Order of Payment", p.ReferenceNo, p.DateFiled, Nothing,
-                               If(paid, "Paid", "Unpaid"), p.PermitId, "business_permits", AppScreen.BusinessPermits)
+                               status, p.PermitId, "business_permits", AppScreen.BusinessPermits)
                 d.Fields("permit_year") = p.PermitYear.ToString()
                 d.Fields("application_type") = p.ApplicationType
                 d.Fields("gross_receipts") = UiHelper.FormatMoney(p.GrossReceipts)
-                d.Fields("total_due") = UiHelper.FormatMoney(BusinessPermitService.GetTotalDue(p))
-                d.Fields("payment_status") = If(paid, "PAID", "UNPAID - please pay at the Municipal Treasurer's Office")
+                d.Fields("total_due") = UiHelper.FormatMoney(bal.Balance)
+                d.Fields("payment_status") = If(bal.IsFullyPaid, "PAID",
+                    If(bal.IsPartiallyPaid, "PARTIALLY PAID - " & UiHelper.FormatMoney(bal.Balance) & " still due as of " & UiHelper.FormatDate(Date.Today),
+                       "UNPAID - please pay at the Municipal Treasurer's Office"))
+                Dim surcharge = If(bal.IsFullyPaid, If(bal.IsLegacy, p.Surcharge, bal.SurchargePaid), bal.SurchargeCharged)
+                Dim interest = If(bal.IsFullyPaid, If(bal.IsLegacy, p.Interest, bal.InterestPaid), bal.InterestPaid + bal.InterestDue)
                 d.Rows.Add({"Business tax and regulatory fees (" & p.ApplicationType & " " & p.PermitYear & ")", UiHelper.FormatMoney(p.AssessedAmount)})
-                If p.Surcharge > 0 Then d.Rows.Add({"Surcharge (late renewal)", UiHelper.FormatMoney(p.Surcharge)})
-                If p.Interest > 0 Then d.Rows.Add({"Interest", UiHelper.FormatMoney(p.Interest)})
+                If surcharge > 0 Then d.Rows.Add({"Surcharge (late renewal)", UiHelper.FormatMoney(surcharge)})
+                If interest > 0 Then d.Rows.Add({"Interest" & If(bal.IsFullyPaid, "", " (as of " & UiHelper.FormatDate(Date.Today) & ")"), UiHelper.FormatMoney(interest)})
+                If bal.TotalPaid > 0 Then
+                    d.Rows.Add({"Less: payments received (" & bal.Payments.Count & ", last OR " & bal.Payments.Last().OrNo & ")",
+                                "- " & UiHelper.FormatMoney(bal.TotalPaid)})
+                End If
                 list.Add(d)
             End If
+        Next
+        AddBusinessTaxReceipts(b, list)
+    End Sub
+
+    ''' <summary>Business tax official receipts: one per payment (partial payments too). Voided ones stay listed as "Voided".</summary>
+    Private Shared Sub AddBusinessTaxReceipts(b As Business, list As List(Of IssuedDocument))
+        Dim payments = BusinessTaxService.GetBusinessPayments(b.BusinessId)
+        If payments.Count = 0 Then Return
+        Dim permitsById = BusinessPermitRepository.GetByBusinessId(b.BusinessId).ToDictionary(Function(x) x.PermitId)
+        For Each pay In payments
+            Dim p As BusinessPermit = Nothing
+            If Not permitsById.TryGetValue(pay.PermitId, p) Then Continue For
+            Dim d = NewDoc(DocumentKinds.BusinessTaxReceipt, "Official Receipt - Business Tax", pay.OrNo, pay.PaymentDate, Nothing,
+                           If(pay.IsVoided, PaymentRules.Voided, StatusService.Paid), pay.PaymentId, "business_permit_payments",
+                           AppScreen.BusinessPermits)
+            d.Holder = p.ReferenceNo & " · " & p.ApplicationType & " " & p.PermitYear
+            d.Fields("application") = p.ReferenceNo & " · " & p.ApplicationType & " " & p.PermitYear
+            d.Fields("total_paid") = UiHelper.FormatMoney(pay.Total)
+            d.Fields("payment_method") = pay.PaymentMethod & If(pay.ReferenceNo <> "", " · Ref. " & pay.ReferenceNo, "")
+            d.Fields("received_by") = If(pay.ReceivedByName <> "", pay.ReceivedByName, "Collecting Officer")
+            Dim left = BusinessTaxService.GetBalanceAfter(pay, payments.Where(Function(x) x.PermitId = pay.PermitId), p)
+            d.Fields("balance_after") = If(left = 0D, "None - " & p.ReferenceNo & " fully paid", UiHelper.FormatMoney(left) & " still due on " & p.ReferenceNo)
+            d.Fields("void_reason") = pay.VoidReason
+            d.Fields("voided_at") = If(pay.VoidedAt.HasValue, UiHelper.FormatDate(pay.VoidedAt), "")
+            d.Rows.Add({"Business tax (" & p.ApplicationType & " " & p.PermitYear & ")", UiHelper.FormatMoney(pay.AmountPaid)})
+            If pay.Surcharge > 0 Then d.Rows.Add({"Surcharge (late renewal)", UiHelper.FormatMoney(pay.Surcharge)})
+            If pay.Interest > 0 Then d.Rows.Add({"Interest (late renewal)", UiHelper.FormatMoney(pay.Interest)})
+            list.Add(d)
         Next
     End Sub
 

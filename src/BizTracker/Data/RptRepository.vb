@@ -78,27 +78,18 @@ Public NotInheritable Class RptRepository
                                           Db.P("@bid", businessId)))
     End Function
 
-    ''' <summary>True if an Official Receipt number was already used (voided payments keep their OR number).</summary>
-    Public Shared Function OrNoExists(orNo As String) As Boolean
-        Return Convert.ToInt32(Db.ExecuteScalar("SELECT COUNT(*) FROM rpt_payments WHERE or_no = @or",
-                                                Db.P("@or", If(orNo, "").Trim()))) > 0
-    End Function
-
-    ''' <summary>The OR number of the payment recorded last (a hint for the next AF 51 serial), or "".</summary>
-    Public Shared Function GetLastOrNo() As String
-        Dim result = Db.ExecuteScalar("SELECT or_no FROM rpt_payments ORDER BY payment_id DESC LIMIT 1")
-        Return If(result Is Nothing, "", result.ToString())
-    End Function
-
     ''' <summary>
     ''' Saves a payment and (optionally) the automatic RPT endorsement in ONE transaction.
     ''' The assessment row is locked first and its active payments are compared with what the screen saw
     ''' (count + total), so two cashiers cannot pay the same balance twice.
-    ''' Returns the new payment_id, 0 if the payments changed in the meantime (nothing saved), or -1 on a DB error.
+    ''' The OR number is registered in official_receipts in the same transaction (unique across all payments).
+    ''' Returns the new payment_id, 0 if the payments changed in the meantime (nothing saved),
+    ''' -2 if the OR number was taken by another cashier a moment earlier, or -1 on a DB error.
     ''' </summary>
     Public Shared Function SavePayment(pay As RptPayment, expectedCount As Integer, expectedTotal As Decimal,
                                        endorsement As EndorsementChange) As Integer
         Dim newId = 0
+        Dim duplicateOr = False
         Dim ok = Db.RunInTransaction(
             Sub(conn, tx)
                 If Not ActivePaymentsUnchanged(conn, tx, pay.AssessmentId, expectedCount, expectedTotal) Then Return
@@ -116,8 +107,10 @@ Public NotInheritable Class RptRepository
                     Db.P("@date", pay.PaymentDate.Date),
                     Db.P("@by", pay.ReceivedBy),
                     Db.P("@remarks", Db.NullIfEmpty(pay.Remarks)))
+                OfficialReceiptRepository.TxRegister(conn, tx, pay.OrNo, OfficialReceiptRepository.SourceRpt, newId)
                 If endorsement IsNot Nothing Then BusinessPermitRepository.TxSetEndorsement(conn, tx, endorsement)
-            End Sub)
+            End Sub, duplicateOr)
+        If duplicateOr Then Return -2
         Return If(ok, newId, -1)
     End Function
 

@@ -29,6 +29,7 @@ Public NotInheritable Class ReportService
             Case DocumentKinds.SanitaryPermit : Return "sanitary_permit.html"
             Case DocumentKinds.HealthCertificate : Return "health_certificate.html"
             Case DocumentKinds.OfficialReceipt : Return "official_receipt.html"
+            Case DocumentKinds.BusinessTaxReceipt : Return "business_tax_receipt.html"
             Case DocumentKinds.TaxClearance : Return "tax_clearance.html"
             Case DocumentKinds.InspectionCertificate : Return "inspection_certificate.html"
             Case Else : Return "construction_clearance.html"
@@ -41,7 +42,7 @@ Public NotInheritable Class ReportService
             Case DocumentKinds.MayorsPermit : Return {"Business Permits and Licensing Office", "Municipal Mayor"}
             Case DocumentKinds.OrderOfPayment : Return {"Business Permits and Licensing Office", "BPLO Assessor"}
             Case DocumentKinds.SanitaryPermit, DocumentKinds.HealthCertificate : Return {"Municipal Health Office", "Municipal Health Officer"}
-            Case DocumentKinds.OfficialReceipt : Return {"Office of the Municipal Treasurer", "Collecting Officer"}
+            Case DocumentKinds.OfficialReceipt, DocumentKinds.BusinessTaxReceipt : Return {"Office of the Municipal Treasurer", "Collecting Officer"}
             Case DocumentKinds.TaxClearance : Return {"Office of the Municipal Treasurer", "Municipal Treasurer"}
             Case DocumentKinds.InspectionCertificate : Return {"Joint Inspection Team", "Team Leader, Joint Inspection Team"}
             Case Else

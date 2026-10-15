@@ -76,6 +76,29 @@ Public NotInheritable Class AccessService
         Return ManagerMap.TryGetValue(screen, managers) AndAlso managers.Contains(Session.Role)
     End Function
 
+    ' ==================== Payments (ONE place for "who can collect / void") ====================
+    ' Revision 3 plans a Treasurer role that takes over Record Payment and Void for RPT and business tax:
+    ' change only these two functions.
+
+    ''' <summary>True if the logged-in user may record walk-in payments on a screen (RPT, Business Permits).</summary>
+    Public Shared Function CanCollectPayments(screen As AppScreen) As Boolean
+        Select Case screen
+            Case AppScreen.RealPropertyTax, AppScreen.BusinessPermits
+                Return CanManage(screen)          ' today: Assessor (RPT) / BPLO (business tax), and Admin
+            Case Else
+                Return False
+        End Select
+    End Function
+
+    ''' <summary>
+    ''' True if the logged-in user may void payments on a screen. Voiding a business tax payment after the
+    ''' Mayor's Permit was issued (afterPermitIssued) is Admin only.
+    ''' </summary>
+    Public Shared Function CanVoidPayments(screen As AppScreen, Optional afterPermitIssued As Boolean = False) As Boolean
+        If Not CanCollectPayments(screen) Then Return False
+        Return Not afterPermitIssued OrElse Session.IsAdmin
+    End Function
+
     ''' <summary>
     ''' True if the logged-in user may see/act on a business's records:
     ''' staff can see every business, an Owner only their own.

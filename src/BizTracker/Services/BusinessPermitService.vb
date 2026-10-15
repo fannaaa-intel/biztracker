@@ -10,6 +10,8 @@ End Class
 ''' <summary>
 ''' Business permit workflow and rules. Screens call this class; it calls the repositories.
 ''' Status flow: Submitted -> Under Review -> For Assessment -> Assessed -> Paid -> Issued (or Rejected).
+''' "Paid" is never set by hand: BusinessTaxService sets it when the recorded payments cover the balance
+''' (an Assessed application with some payments shows as "Partially Paid").
 ''' Every change is written to audit_log.
 ''' </summary>
 Public NotInheritable Class BusinessPermitService
@@ -162,7 +164,15 @@ Public NotInheritable Class BusinessPermitService
         ElseIf p.DateFiled.Year < p.PermitYear - 1 Then
             errors("filed") = "Date filed is too early for a " & p.PermitYear & " permit."
         End If
-        If p.AssessedAmount < 0 Then errors("assessed") = "Assessed amount cannot be negative."
+        If p.AssessedAmount < 0 Then
+            errors("assessed") = "Assessed amount cannot be negative."
+        ElseIf p.PermitId > 0 Then
+            Dim saved = BusinessPermitRepository.GetById(p.PermitId)
+            If saved IsNot Nothing AndAlso saved.AssessedAmount <> p.AssessedAmount AndAlso
+               BusinessTaxService.GetActivePayments(p.PermitId).Count > 0 Then
+                errors("assessed") = "Payments were already recorded - the assessed tax can no longer change."
+            End If
+        End If
         Return errors
     End Function
 
@@ -230,6 +240,14 @@ Public NotInheritable Class BusinessPermitService
                 Dim pending = BusinessPermitRepository.GetEndorsements(p.PermitId).
                               Where(Function(e) e.Status <> "Endorsed").Select(Function(e) e.Office).ToList()
                 If pending.Count > 0 Then Return "Waiting for endorsement from: " & String.Join(", ", pending) & "."
+            Case Paid
+                ' Paid comes only from recorded payments (BusinessTaxService)
+                Dim b = BusinessTaxService.GetBalance(p, Date.Today)
+                Return "Record the business tax with ""Record Payment"" (" & UiHelper.FormatMoney(b.Balance) & " due). " &
+                       "The application becomes Paid automatically once fully paid."
+            Case Issued
+                Dim b = BusinessTaxService.GetBalance(p, Date.Today)
+                If Not b.IsFullyPaid Then Return "The business tax is not fully paid yet (" & UiHelper.FormatMoney(b.Balance) & " due)."
         End Select
         Return Nothing
     End Function
@@ -250,8 +268,6 @@ Public NotInheritable Class BusinessPermitService
                 If assessedAmount <= 0 Then Return "Enter the assessed business tax (more than 0)."
                 p.AssessedAmount = Math.Round(assessedAmount, 2)
                 ApplyLateCharges(p, Date.Today)
-            Case Paid
-                ApplyLateCharges(p, Date.Today)     ' interest runs until the day of payment
             Case Issued
                 p.MayorsPermitNo = ReferenceNoService.GetNext(ReferenceNoService.MayorsPermit, p.PermitYear)
                 p.DateIssued = Date.Today
@@ -274,6 +290,9 @@ Public NotInheritable Class BusinessPermitService
         If Not AccessService.CanManage(AppScreen.BusinessPermits) Then Return "You are not allowed to change the status."
         If IsFinal(p.Status) Then Return "This application is already " & p.Status & "."
         If String.IsNullOrWhiteSpace(reason) Then Return "Please enter the reason for rejecting."
+        If BusinessTaxService.GetActivePayments(p.PermitId).Count > 0 Then
+            Return "Business tax payments were recorded for " & p.ReferenceNo & ". Void them first (Payments tab), then reject."
+        End If
 
         Dim oldStatus = p.Status
         p.Status = Rejected

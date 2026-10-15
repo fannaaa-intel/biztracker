@@ -15,6 +15,7 @@ SET FOREIGN_KEY_CHECKS = 0;
 DROP TABLE IF EXISTS audit_log, notifications, settings,
   construction_clearances, construction_projects,
   inspection_items, inspections,
+  official_receipts, business_permit_payments,
   rpt_payments, rpt_assessments, properties,
   health_certificates, employees, sanitary_permits,
   requirements, clearance_endorsements, business_permits,
@@ -86,6 +87,7 @@ CREATE TABLE business_permits (
   assessed_amount   DECIMAL(12,2) NOT NULL DEFAULT 0,
   surcharge         DECIMAL(12,2) NOT NULL DEFAULT 0,
   interest          DECIMAL(12,2) NOT NULL DEFAULT 0,
+  legacy_paid       TINYINT(1) NOT NULL DEFAULT 0,   -- 1 = Paid/Issued before payments were recorded (no payment rows)
   mayors_permit_no  VARCHAR(30) NULL UNIQUE,
   date_filed        DATE NOT NULL,
   date_issued       DATE NULL,
@@ -110,6 +112,37 @@ CREATE TABLE clearance_endorsements (
   CONSTRAINT fk_ce_permit FOREIGN KEY (permit_id)
     REFERENCES business_permits(permit_id) ON DELETE RESTRICT ON UPDATE CASCADE,
   CONSTRAINT fk_ce_user FOREIGN KEY (endorsed_by)
+    REFERENCES users(user_id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+-- Business tax walk-in payments (several per application = partial payments).
+-- amount_paid + surcharge + interest = the amount on the receipt: amount_paid is the part applied to the
+-- business tax (principal), surcharge / interest the parts applied to the late-renewal charges.
+-- Voided payments are never deleted: voided_at is set and they no longer count.
+CREATE TABLE business_permit_payments (
+  payment_id      INT AUTO_INCREMENT PRIMARY KEY,
+  permit_id       INT NOT NULL,
+  amount_paid     DECIMAL(14,2) NOT NULL,            -- applied to the business tax
+  surcharge       DECIMAL(12,2) NOT NULL DEFAULT 0,  -- applied to the 25% late-renewal surcharge
+  interest        DECIMAL(12,2) NOT NULL DEFAULT 0,  -- applied to the monthly interest
+  payment_method  ENUM('Cash','Check','GCash','Bank Transfer') NOT NULL DEFAULT 'Cash',
+  reference_no    VARCHAR(50) NULL,
+  or_no           VARCHAR(30) NOT NULL UNIQUE,       -- typed AF 51 serial (also registered in official_receipts)
+  payment_date    DATE NOT NULL,
+  received_by     INT NULL,
+  remarks         VARCHAR(255) NULL,
+  voided_at       DATETIME NULL,
+  voided_by       INT NULL,
+  void_reason     VARCHAR(255) NULL,
+  created_at      DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_bpp_permit (permit_id),
+  INDEX idx_bpp_user (received_by),
+  INDEX idx_bpp_voided_by (voided_by),
+  CONSTRAINT fk_bpp_permit FOREIGN KEY (permit_id)
+    REFERENCES business_permits(permit_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_bpp_user FOREIGN KEY (received_by)
+    REFERENCES users(user_id) ON DELETE RESTRICT ON UPDATE CASCADE,
+  CONSTRAINT fk_bpp_voided_by FOREIGN KEY (voided_by)
     REFERENCES users(user_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
@@ -329,6 +362,19 @@ CREATE TABLE notifications (
     REFERENCES businesses(business_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
+-- Every OR number ever used, by ANY payment (RPT and business tax, voided ones too).
+-- One AF 51 booklet serves both offices: the UNIQUE or_no keeps a number from being used twice,
+-- even when two cashiers save at the same moment (each payment registers its OR in the same transaction).
+-- payment_id points to rpt_payments (source 'RPT') or business_permit_payments (source 'BP').
+CREATE TABLE official_receipts (
+  receipt_id  INT AUTO_INCREMENT PRIMARY KEY,
+  or_no       VARCHAR(30) NOT NULL UNIQUE,
+  source      ENUM('RPT','BP') NOT NULL,
+  payment_id  INT NOT NULL,
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  INDEX idx_or_source (source, payment_id)
+) ENGINE=InnoDB;
+
 CREATE TABLE settings (
   setting_key    VARCHAR(50) PRIMARY KEY,
   setting_value  VARCHAR(255) NOT NULL,
@@ -412,7 +458,8 @@ INSERT INTO business_permits (permit_id, business_id, reference_no, application_
 (2, 1, CONCAT('BP-', @Y+1, '-00001'), 'Renewal', @Y+1, 'Under Review', 2100000, 0,     NULL,                        CURDATE() - INTERVAL 7 DAY, NULL, NULL, 'Early renewal filing'),
 (3, 2, CONCAT('BP-', @Y, '-00002'),   'Renewal', @Y,   'Issued',       950000,  9500,  CONCAT('MP-', @Y, '-00002'), @JAN1 + INTERVAL 8 DAY,  @JAN1 + INTERVAL 19 DAY, MAKEDATE(@Y, 1) + INTERVAL 1 YEAR - INTERVAL 1 DAY, NULL),
 (4, 3, CONCAT('BP-', @Y, '-00003'),   'New',     @Y,   'Issued',       600000,  6000,  CONCAT('MP-', @Y, '-00003'), @JAN1 + INTERVAL 40 DAY, @JAN1 + INTERVAL 55 DAY, MAKEDATE(@Y, 1) + INTERVAL 1 YEAR - INTERVAL 1 DAY, NULL),
-(5, 3, CONCAT('BP-', @Y+1, '-00002'), 'Renewal', @Y+1, 'Submitted',    800000,  0,     NULL,                        CURDATE() - INTERVAL 2 DAY, NULL, NULL, 'Awaiting document review');
+(5, 3, CONCAT('BP-', @Y+1, '-00002'), 'Renewal', @Y+1, 'Submitted',    800000,  0,     NULL,                        CURDATE() - INTERVAL 2 DAY, NULL, NULL, 'Awaiting document review'),
+(6, 2, CONCAT('BP-', @Y+1, '-00003'), 'Renewal', @Y+1, 'Assessed',     980000,  9800,  NULL,                        CURDATE() - INTERVAL 10 DAY, NULL, NULL, 'Early renewal - paying in parts');
 
 -- Endorsements for the bakeshop's renewal (permit 2): Fire pending
 INSERT INTO clearance_endorsements (permit_id, office, status, endorsed_by, endorsed_at, remarks) VALUES
@@ -426,6 +473,14 @@ INSERT INTO clearance_endorsements (permit_id, office, status, endorsed_by, endo
 INSERT INTO clearance_endorsements (permit_id, office, status) VALUES
 (5, 'Barangay', 'Pending'), (5, 'Sanitary', 'Pending'), (5, 'RPT', 'Pending'),
 (5, 'Fire', 'Pending'), (5, 'Zoning', 'Pending');
+
+-- Endorsements for Santos's early renewal (permit 6): all endorsed, so it could be assessed
+INSERT INTO clearance_endorsements (permit_id, office, status, endorsed_by, endorsed_at, remarks) VALUES
+(6, 'Barangay', 'Endorsed', 2, CURDATE() - INTERVAL 8 DAY, 'Barangay clearance verified'),
+(6, 'Sanitary', 'Endorsed', 3, CURDATE() - INTERVAL 8 DAY, 'Valid sanitary permit on file'),
+(6, 'RPT',      'Endorsed', 4, CURDATE() - INTERVAL 8 DAY, 'No real property dues'),
+(6, 'Fire',     'Endorsed', 6, CURDATE() - INTERVAL 7 DAY, 'FSIC valid'),
+(6, 'Zoning',   'Endorsed', 5, CURDATE() - INTERVAL 7 DAY, 'Conforms to commercial zone');
 
 -- Endorsements for issued permits (all endorsed)
 INSERT INTO clearance_endorsements (permit_id, office, status, endorsed_by, endorsed_at)
@@ -456,7 +511,22 @@ INSERT INTO requirements (business_id, module, related_id, document_name, file_p
 (1, 'Construction Permit', 1, 'Plumbing / Sanitary Plans',     'uploads/1/plumbing_plans.pdf',   'Submitted',      CURDATE() - INTERVAL 40 DAY, NULL, NULL),
 (1, 'Construction Permit', 1, 'Lot Title & Tax Declaration',   'uploads/1/title_td.pdf',         'Verified',       CURDATE() - INTERVAL 40 DAY, 5, CURDATE() - INTERVAL 35 DAY),
 (3, 'Business Permit', 5, 'DTI/SEC Registration',              'uploads/3/dti_registration.pdf', 'Submitted',      CURDATE() - INTERVAL 2 DAY, NULL, NULL),
-(3, 'Business Permit', 5, 'Gross Receipts Declaration',        NULL,                             'Pending Upload', NULL, NULL, NULL);
+(3, 'Business Permit', 5, 'Gross Receipts Declaration',        NULL,                             'Pending Upload', NULL, NULL, NULL),
+(2, 'Business Permit', 6, 'DTI/SEC Registration',              'uploads/2/dti_registration.pdf', 'Verified',       CURDATE() - INTERVAL 10 DAY, 2, CURDATE() - INTERVAL 9 DAY),
+(2, 'Business Permit', 6, 'Gross Receipts Declaration',        'uploads/2/gross_receipts.pdf',   'Verified',       CURDATE() - INTERVAL 10 DAY, 2, CURDATE() - INTERVAL 9 DAY),
+(2, 'Business Permit', 6, 'Lease Contract',                    'uploads/2/lease_contract.pdf',   'Verified',       CURDATE() - INTERVAL 10 DAY, 2, CURDATE() - INTERVAL 9 DAY),
+(2, 'Business Permit', 6, 'Occupancy Permit',                  'uploads/2/occupancy.pdf',        'Verified',       CURDATE() - INTERVAL 10 DAY, 2, CURDATE() - INTERVAL 9 DAY),
+(2, 'Business Permit', 6, 'Fire Safety Inspection Certificate (FSIC)', 'uploads/2/fsic.pdf',     'Verified',       CURDATE() - INTERVAL 10 DAY, 2, CURDATE() - INTERVAL 9 DAY);
+
+-- ---------- Business tax payments ----------
+-- The three issued permits were paid in full on time (before the Jan 20 deadline / new business).
+-- Santos's early renewal (permit 6, tax P9,800) is PARTIALLY PAID: P4,000 by GCash, P5,800 left
+-- (no surcharge or interest as long as the rest is paid by Jan 20 of next year).
+INSERT INTO business_permit_payments (permit_id, amount_paid, surcharge, interest, payment_method, reference_no, or_no, payment_date, received_by, remarks) VALUES
+(1, 18500.00, 0, 0, 'Cash',  NULL,                 '7000001', @JAN1 + INTERVAL 15 DAY,     2, NULL),
+(3,  9500.00, 0, 0, 'Check', '0004512 - Landbank', '7000002', @JAN1 + INTERVAL 18 DAY,     2, NULL),
+(4,  6000.00, 0, 0, 'Cash',  NULL,                 '7000003', @JAN1 + INTERVAL 50 DAY,     2, NULL),
+(6,  4000.00, 0, 0, 'GCash', '1012 334 778901',    '7000004', CURDATE() - INTERVAL 3 DAY,  2, 'Partial payment - will pay the rest before Jan 20');
 
 -- ---------- Sanitary Permits ----------
 INSERT INTO sanitary_permits (sanitary_id, business_id, permit_no, permit_year, category, status, inspection_date, inspection_score, inspector_name, findings, date_filed, date_issued, valid_until) VALUES
@@ -557,6 +627,16 @@ SELECT a.assessment_id, 2, 60.00, 0,
 FROM rpt_assessments a
 WHERE a.property_id = 3
   AND (MAKEDATE(@Y, 1) + INTERVAL 3 MONTH - INTERVAL 1 DAY) < CURDATE();
+
+-- ---------- OR registry ----------
+-- Every OR number used above, oldest payment first (the last one is the "Last used" hint).
+INSERT INTO official_receipts (or_no, source, payment_id, created_at)
+SELECT or_no, src, payment_id, payment_date FROM (
+  SELECT or_no, 'RPT' AS src, payment_id, payment_date FROM rpt_payments
+  UNION ALL
+  SELECT or_no, 'BP' AS src, payment_id, payment_date FROM business_permit_payments
+) used
+ORDER BY payment_date, or_no;
 
 -- ---------- Annual Inspection ----------
 -- Bakeshop: inspected 10 days ago, Fire failed (exit door), re-inspection in 30 days

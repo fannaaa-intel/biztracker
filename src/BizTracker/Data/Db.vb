@@ -153,6 +153,37 @@ Public NotInheritable Class Db
     End Function
 
     ''' <summary>
+    ''' Same as RunInTransaction, but a duplicate value (MySQL error 1062, e.g. an OR number another cashier
+    ''' saved a moment earlier) does NOT show a message box: it rolls back, sets duplicateKey = True and
+    ''' returns False, so the caller can show a specific message. Other errors are shown as usual.
+    ''' </summary>
+    Public Shared Function RunInTransaction(work As Action(Of MySqlConnection, MySqlTransaction),
+                                            ByRef duplicateKey As Boolean) As Boolean
+        duplicateKey = False
+        Try
+            Using conn = GetConnection()
+                conn.Open()
+                Using tx = conn.BeginTransaction()
+                    Try
+                        work(conn, tx)
+                        tx.Commit()
+                        Return True
+                    Catch
+                        tx.Rollback()
+                        Throw
+                    End Try
+                End Using
+            End Using
+        Catch ex As MySqlException When ex.Number = 1062
+            duplicateKey = True
+            Return False
+        Catch ex As Exception
+            ShowError(ex)
+            Return False
+        End Try
+    End Function
+
+    ''' <summary>
     ''' Runs one statement inside RunInTransaction. Returns LAST_INSERT_ID for INSERTs.
     ''' Does NOT catch errors - the transaction catches them and rolls back.
     ''' </summary>

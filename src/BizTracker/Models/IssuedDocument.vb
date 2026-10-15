@@ -7,12 +7,13 @@ Public NotInheritable Class DocumentKinds
     Public Const SanitaryPermit As String = "Sanitary Permit"
     Public Const HealthCertificate As String = "Health Certificate"
     Public Const OfficialReceipt As String = "RPT Official Receipt"
+    Public Const BusinessTaxReceipt As String = "Business Tax Official Receipt"
     Public Const TaxClearance As String = "RPT Tax Clearance"
     Public Const InspectionCertificate As String = "Annual Inspection Certificate"
     Public Const ConstructionClearance As String = "Construction Clearance"
 
     Public Shared ReadOnly All As String() =
-        {MayorsPermit, OrderOfPayment, SanitaryPermit, HealthCertificate, OfficialReceipt, TaxClearance,
+        {MayorsPermit, OrderOfPayment, BusinessTaxReceipt, SanitaryPermit, HealthCertificate, OfficialReceipt, TaxClearance,
          InspectionCertificate, ConstructionClearance}
 End Class
 
