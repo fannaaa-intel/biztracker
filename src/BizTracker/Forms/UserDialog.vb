@@ -12,17 +12,20 @@ Public Class UserDialog
 
     Private ReadOnly txtUsername As New TextBox()
     Private ReadOnly txtName As New TextBox()
+    Private ReadOnly txtEmail As New TextBox()
     Private ReadOnly cboRole As New ComboBox()
     Private ReadOnly cboBusiness As New ComboBox()
     Private ReadOnly txtPassword As New TextBox()
     Private ReadOnly errUsername As Label
     Private ReadOnly errName As Label
+    Private ReadOnly errEmail As Label
     Private ReadOnly errRole As Label
     Private ReadOnly errBusiness As Label
     Private ReadOnly errPassword As Label
     Private ReadOnly accessBox As New RoundedPanel()
     Private ReadOnly lblAccess As New Label()
     Private businesses As List(Of Business)
+    Private autoEmail As String = ""            ' last e-mail filled in from a business (replaced when the business changes)
 
     ''' <summary>The saved account (after OK).</summary>
     Public ReadOnly Property SavedUser As User
@@ -57,10 +60,10 @@ Public Class UserDialog
         isNew = adding
         ownerFor = business
         account = New User With {
-            .UserId = u.UserId, .Username = u.Username, .FullName = u.FullName, .Role = u.Role,
+            .UserId = u.UserId, .Username = u.Username, .FullName = u.FullName, .Email = u.Email, .Role = u.Role,
             .BusinessId = u.BusinessId, .BusinessName = u.BusinessName, .IsActive = u.IsActive
         }
-        Dim bodyHeight = If(isNew, 322, 244)
+        Dim bodyHeight = If(isNew, 360, 322)
         ClientSize = New Size(560, 76 + bodyHeight + 64)
         If ownerFor IsNot Nothing Then
             SetTitle("Create Owner Account", "Sign-in for the owner of " & ownerFor.BusinessName)
@@ -97,15 +100,19 @@ Public Class UserDialog
             Tips.SetToolTip(cboRole.Parent, "You cannot change your own role")
         End If
 
-        ' --- Temporary password (new accounts only) ---
+        ' --- E-mail (+ temporary password for new accounts) ---
+        StyleText(txtEmail, account.Email, "e.g. juan@gmail.com", Validation.MaxEmailLength)
+        errEmail = AddField("E-mail (for Forgot Password)", txtEmail, 24, 174, If(isNew, 246, 512))
+        autoEmail = If(ownerFor IsNot Nothing, account.Email, "")
+
         If isNew Then
             StyleText(txtPassword, UserService.GenerateTemporaryPassword(), "At least 8 letters and numbers", 72)
-            errPassword = AddField("Temporary password", txtPassword, 24, 174, 246)
+            errPassword = AddField("Temporary password", txtPassword, 290, 174, 246)
             Dim note As New Label With {
-                .Text = "Prefilled with a random password. It is shown again once after saving, so you can give it to the user.",
+                .Text = "The temporary password is prefilled with a random one. It is shown again once after saving, so you can give it to the user.",
                 .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted, .AutoSize = False, .AutoEllipsis = True
             }
-            note.SetBounds(290, 194, 246, 48)
+            note.SetBounds(24, 250, 512, 34)
             Tips.SetToolTip(note, note.Text)
             Body.Controls.Add(note)
         Else
@@ -117,7 +124,7 @@ Public Class UserDialog
         accessBox.Radius = 10
         accessBox.BackColor = Theme.AccentSoft
         accessBox.Padding = New Padding(14, 0, 14, 0)
-        accessBox.SetBounds(24, If(isNew, 252, 174), 512, 52)
+        accessBox.SetBounds(24, If(isNew, 290, 252), 512, 52)
         lblAccess.Dock = DockStyle.Fill
         lblAccess.Font = Theme.SmallBoldFont
         lblAccess.ForeColor = Theme.SidebarBlue
@@ -137,8 +144,12 @@ Public Class UserDialog
 
         AddHandler txtUsername.TextChanged, Sub() errUsername.Text = ""
         AddHandler txtName.TextChanged, Sub() errName.Text = ""
+        AddHandler txtEmail.TextChanged, Sub() errEmail.Text = ""
         AddHandler txtPassword.TextChanged, Sub() errPassword.Text = ""
-        AddHandler cboBusiness.SelectedIndexChanged, Sub() errBusiness.Text = ""
+        AddHandler cboBusiness.SelectedIndexChanged, Sub()
+                                                         errBusiness.Text = ""
+                                                         FillEmailFromBusiness()
+                                                     End Sub
         AddHandler cboRole.SelectedIndexChanged, Sub()
                                                      errRole.Text = ""
                                                      errBusiness.Text = ""
@@ -189,12 +200,27 @@ Public Class UserDialog
         Tips.SetToolTip(lblAccess, lblAccess.Text)
     End Sub
 
+    ''' <summary>
+    ''' New Owner accounts: pre-fill the e-mail from the chosen business (still editable). Only replaces
+    ''' an empty box or a value that was filled in automatically, never one the Admin typed.
+    ''' </summary>
+    Private Sub FillEmailFromBusiness()
+        If Not isNew OrElse SelectedRole <> Roles.Owner Then Return
+        Dim b = TryCast(cboBusiness.SelectedItem, Business)
+        If b Is Nothing Then Return
+        Dim typed = txtEmail.Text.Trim()
+        If typed <> "" AndAlso Not String.Equals(typed, autoEmail, StringComparison.OrdinalIgnoreCase) Then Return
+        autoEmail = If(Validation.NormalizeEmail(b.Email), "")
+        txtEmail.Text = autoEmail
+    End Sub
+
     Private Sub Save_Click(sender As Object, e As EventArgs)
-        For Each errLabel In {errUsername, errName, errRole, errBusiness, errPassword}
+        For Each errLabel In {errUsername, errName, errEmail, errRole, errBusiness, errPassword}
             errLabel.Text = ""
         Next
         Dim candidate As New User With {
-            .UserId = account.UserId, .Username = txtUsername.Text.Trim(), .FullName = txtName.Text.Trim(), .Role = SelectedRole,
+            .UserId = account.UserId, .Username = txtUsername.Text.Trim(), .FullName = txtName.Text.Trim(),
+            .Email = If(Validation.NormalizeEmail(txtEmail.Text), ""), .Role = SelectedRole,
             .BusinessId = If(SelectedRole = Roles.Owner, TryCast(cboBusiness.SelectedItem, Business)?.BusinessId, Nothing),
             .IsActive = account.IsActive
         }
@@ -202,10 +228,11 @@ Public Class UserDialog
         If errors.Count > 0 Then
             If errors.ContainsKey("username") Then errUsername.Text = errors("username")
             If errors.ContainsKey("name") Then errName.Text = errors("name")
+            If errors.ContainsKey("email") Then errEmail.Text = errors("email")
             If errors.ContainsKey("role") Then errRole.Text = errors("role")
             If errors.ContainsKey("business") Then errBusiness.Text = errors("business")
             If errors.ContainsKey("password") Then errPassword.Text = errors("password")
-            For Each lbl In {errUsername, errName, errRole, errBusiness, errPassword}
+            For Each lbl In {errUsername, errName, errEmail, errRole, errBusiness, errPassword}
                 Tips.SetToolTip(lbl, lbl.Text)
             Next
             Return
@@ -221,6 +248,7 @@ Public Class UserDialog
         account.UserId = candidate.UserId
         account.Username = candidate.Username
         account.FullName = candidate.FullName
+        account.Email = candidate.Email
         account.Role = candidate.Role
         account.BusinessId = candidate.BusinessId
         DialogResult = DialogResult.OK

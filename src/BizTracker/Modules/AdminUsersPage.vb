@@ -109,7 +109,8 @@ Public Class AdminUsersPage
     Private Sub BindGrid(selectId As Integer?)
         Dim term = txtSearch.Text.Trim().ToLowerInvariant()
         Dim rows = users.Where(Function(u) term = "" OrElse
-                                   (u.Username & " " & u.FullName & " " & u.Role & " " & u.BusinessName & " " & UserService.GetStatus(u)).
+                                   (u.Username & " " & u.FullName & " " & u.Email & " " & u.Role & " " & u.BusinessName & " " & UserService.GetStatus(u) &
+                                    If(u.Email = "", " no email", "")).
                                    ToLowerInvariant().Contains(term)).
                          Select(Function(u) New UserRow With {
                              .UserId = u.UserId, .Username = u.Username, .FullName = u.FullName, .Role = u.Role,
@@ -170,12 +171,16 @@ Public Class AdminUsersPage
         header.SetText(u.Username, UserService.GetStatus(u), u.FullName & " · " & u.Role)
         Dim rows As New List(Of Control) From {
             InfoRow(Tips, "Full name", u.FullName, "Role", u.Role),
+            InfoRow(Tips, "E-mail", If(u.Email = "", "No email", u.Email)),
             InfoRow(Tips, "Linked business", If(u.BusinessName = "", "None (staff)", u.BusinessName),
                     "Last sign-in", If(u.LastLogin.HasValue, FormatSignIn(u.LastLogin.Value), "Never")),
             InfoRow(Tips, "Account created", UiHelper.FormatDate(u.CreatedAt), "Status", UserService.GetStatus(u)),
             HeadingRow("Access"),
             NoteRow(Tips, UserService.DescribeRole(u.Role), Theme.TextDark)
         }
+        If u.Email = "" Then
+            rows.Add(NoteRow(Tips, "No email: this user cannot use Forgot Password. Click ""Edit User"" to add one.", Theme.StatusAmber))
+        End If
         If UserService.IsSelf(u) Then
             rows.Add(NoteRow(Tips, "This is your account: you cannot deactivate it or change its role.", Theme.StatusAmber))
         ElseIf Not u.IsActive Then

@@ -1,6 +1,6 @@
 # BizTracker Database
 
-Everything lives in one file: **`biztracker_db.sql`**. It creates the database, all 18 tables, and the sample data.
+Everything lives in one file: **`biztracker_db.sql`**. It creates the database, all 19 tables, and the sample data.
 This file is the source of truth for the schema.
 
 - Server: XAMPP MySQL (MariaDB) on `localhost:3306`
@@ -17,7 +17,7 @@ This file is the source of truth for the schema.
    8 `Valid`, 1 `Expiring Soon` and 1 `Expired`.
 
 ## Reset to fresh sample data
-Run the same file again with the same steps. It drops all 18 tables and recreates them, which **deletes all data**
+Run the same file again with the same steps. It drops all 19 tables and recreates them, which **deletes all data**
 (including anything entered through the app), then re-seeds them.
 
 Seed dates are relative to the day you import (`CURDATE()`), so "Expiring Soon" and "Overdue" alerts always
@@ -28,11 +28,19 @@ Command-line alternative (Git Bash):
 /c/xampp/mysql/bin/mysql.exe -u root < database/biztracker_db.sql
 ```
 
+## Upgrade an existing database (keep your data)
+Changes made after the first import come as scripts in `database/migrations/`. Run them in date order, the same way
+(phpMyAdmin > SQL tab > paste > Go). They never drop tables, and running one twice is harmless.
+
+| Script | What it adds |
+|---|---|
+| `2026-10-15_forgot_password.sql` | `users.email` (unique) and the `password_resets` table. Fills e-mails where it is safe, then lists the accounts still without an e-mail (fix them in Settings > Users). |
+
 ## Tables
 | # | Table | What it stores |
 |---|---|---|
 | 1 | `businesses` | Registered businesses (name, owner, address, barangay, line of business, food/non-food). Soft delete via `is_active`. |
-| 2 | `users` | Login accounts with a BCrypt password hash and role. Owner accounts are linked to one business. |
+| 2 | `users` | Login accounts with a BCrypt password hash, role and e-mail (unique, needed for Forgot Password). Owner accounts are linked to one business. |
 | 3 | `business_permits` | Mayor's/Business Permit applications (New/Renewal) per year, with status flow, assessment, surcharge and interest. |
 | 4 | `clearance_endorsements` | The five office endorsements (Barangay, Sanitary, RPT, Fire, Zoning) for each business permit application. |
 | 5 | `requirements` | Document checklist shared by all six modules. Uploaded files are stored as relative paths. |
@@ -49,19 +57,23 @@ Command-line alternative (Git Bash):
 | 16 | `notifications` | Expiry and overdue alerts per business. Empty at first; the app's AlertService fills it. |
 | 17 | `settings` | Rates and options (warning days, surcharge, interest, RPT rates, etc.) so they can change without code edits. |
 | 18 | `audit_log` | Who did what and when (logins, inserts, updates, status changes, uploads, prints). |
+| 19 | `password_resets` | Forgot Password codes (BCrypt hash only), valid 10 minutes, single use, max 5 wrong attempts. |
 
 ## Seeded logins
 All passwords are **`password123`**.
 
-| Username | Role | Full name | Business |
-|---|---|---|---|
-| `admin` | Admin | System Administrator | — |
-| `bplo` | BPLO | Liza Ramirez | — |
-| `health` | Health | Dr. Paolo Agustin | — |
-| `assessor` | Assessor | Ramon Villanueva | — |
-| `building` | Building | Engr. Teresa Castillo | — |
-| `inspector` | Inspector | Insp. Mark Del Rosario | — |
-| `owner` | Owner | Cristan Dela Cruz | Cristan's Bakeshop (business_id 1) |
+| Username | Role | Full name | E-mail | Business |
+|---|---|---|---|---|
+| `admin` | Admin | System Administrator | admin@example.com | — |
+| `bplo` | BPLO | Liza Ramirez | bplo@example.com | — |
+| `health` | Health | Dr. Paolo Agustin | health@example.com | — |
+| `assessor` | Assessor | Ramon Villanueva | assessor@example.com | — |
+| `building` | Building | Engr. Teresa Castillo | building@example.com | — |
+| `inspector` | Inspector | Insp. Mark Del Rosario | inspector@example.com | — |
+| `owner` | Owner | Cristan Dela Cruz | cristan.bakeshop@example.com (the business e-mail) | Cristan's Bakeshop (business_id 1) |
+
+The e-mails use `@example.com` on purpose, so test password resets never reach a real inbox. To try Forgot Password,
+change one account's e-mail to your own (Settings > Users > Edit User) and set up Gmail first (`docs/EMAIL_SETUP.md`).
 
 ## The sample story
 The main business is **Cristan's Bakeshop** (Centro 01, Aparri, Cagayan):

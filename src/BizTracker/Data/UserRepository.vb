@@ -25,6 +25,21 @@ Public NotInheritable Class UserRepository
                                       Db.P("@username", username.Trim()))).FirstOrDefault()
     End Function
 
+    ''' <summary>Used by Forgot Password. The e-mail is normalized (trim + lower case). Nothing if not found.</summary>
+    Public Shared Function GetByEmail(email As String) As User
+        Dim normalized = Validation.NormalizeEmail(email)
+        If normalized Is Nothing Then Return Nothing
+        Return ToList(Db.GetDataTable(SelectSql & "WHERE u.email = @email", Db.P("@email", normalized))).FirstOrDefault()
+    End Function
+
+    ''' <summary>True if another account (not ignoreUserId) already uses this e-mail.</summary>
+    Public Shared Function EmailExists(email As String, ignoreUserId As Integer) As Boolean
+        Dim normalized = Validation.NormalizeEmail(email)
+        If normalized Is Nothing Then Return False
+        Return Convert.ToInt32(Db.ExecuteScalar("SELECT COUNT(*) FROM users WHERE email = @email AND user_id <> @id",
+                                                Db.P("@email", normalized), Db.P("@id", ignoreUserId))) > 0
+    End Function
+
     ''' <summary>Owner accounts linked to a business.</summary>
     Public Shared Function GetByBusinessId(businessId As Integer) As List(Of User)
         Return ToList(Db.GetDataTable(SelectSql & "WHERE u.business_id = @bid ORDER BY u.username",
@@ -34,24 +49,26 @@ Public NotInheritable Class UserRepository
     ''' <summary>Inserts a user (PasswordHash must already be a BCrypt hash). Returns new user_id or -1.</summary>
     Public Shared Function Insert(u As User) As Integer
         Const sql As String =
-            "INSERT INTO users (username, password_hash, full_name, role, business_id, is_active) " &
-            "VALUES (@username, @hash, @name, @role, @bid, @active)"
+            "INSERT INTO users (username, password_hash, full_name, email, role, business_id, is_active) " &
+            "VALUES (@username, @hash, @name, @email, @role, @bid, @active)"
         Return Db.ExecuteInsert(sql,
             Db.P("@username", u.Username.Trim()),
             Db.P("@hash", u.PasswordHash),
             Db.P("@name", u.FullName.Trim()),
+            Db.P("@email", Validation.NormalizeEmail(u.Email)),
             Db.P("@role", u.Role),
             Db.P("@bid", u.BusinessId),
             Db.P("@active", u.IsActive))
     End Function
 
-    ''' <summary>Updates name, role, linked business and active flag (not the password).</summary>
+    ''' <summary>Updates name, e-mail, role, linked business and active flag (not the password).</summary>
     Public Shared Function Update(u As User) As Boolean
         Const sql As String =
-            "UPDATE users SET full_name = @name, role = @role, business_id = @bid, is_active = @active " &
+            "UPDATE users SET full_name = @name, email = @email, role = @role, business_id = @bid, is_active = @active " &
             "WHERE user_id = @id"
         Return Db.ExecuteNonQuery(sql,
             Db.P("@name", u.FullName.Trim()),
+            Db.P("@email", Validation.NormalizeEmail(u.Email)),
             Db.P("@role", u.Role),
             Db.P("@bid", u.BusinessId),
             Db.P("@active", u.IsActive),
@@ -91,6 +108,7 @@ Public NotInheritable Class UserRepository
             .Username = row.GetString("username"),
             .PasswordHash = row.GetString("password_hash"),
             .FullName = row.GetString("full_name"),
+            .Email = row.GetString("email"),
             .Role = row.GetString("role"),
             .BusinessId = row.GetNullableInt("business_id"),
             .IsActive = row.GetBool("is_active"),

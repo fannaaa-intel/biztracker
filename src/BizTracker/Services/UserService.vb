@@ -7,6 +7,7 @@ Imports System.Text.RegularExpressions
 '''   - usernames are unique (3-50 letters, digits, dot, dash or underscore) and cannot be changed later
 '''   - Owner accounts must be linked to an active business (one owner account per business);
 '''     staff accounts are never linked to a business
+'''   - the e-mail is optional (needed for Forgot Password), must look valid and be unique; stored trimmed + lower case
 '''   - passwords are stored as BCrypt hashes; a reset creates a temporary password shown once
 '''   - you cannot deactivate yourself or change your own role, and at least one active Admin must remain
 '''   - users are never deleted (deactivated instead) so the audit log stays valid
@@ -60,7 +61,7 @@ Public NotInheritable Class UserService
     ' ==================== Validation ====================
 
     ''' <summary>
-    ''' Checks an account. Keys: "username", "name", "role", "business", "password".
+    ''' Checks an account. Keys: "username", "name", "email", "role", "business", "password".
     ''' password is checked only for new accounts (pass Nothing when editing).
     ''' </summary>
     Public Shared Function ValidateUser(u As User, isNew As Boolean, Optional password As String = Nothing) As Dictionary(Of String, String)
@@ -84,6 +85,18 @@ Public NotInheritable Class UserService
             errors("name") = "Enter the person's full name."
         ElseIf u.FullName.Trim().Length > 150 Then
             errors("name") = "The name can be at most 150 characters."
+        End If
+
+        ' E-mail is optional for now, but needed for Forgot Password. Compared trimmed + lower case.
+        Dim email = Validation.NormalizeEmail(u.Email)
+        If email IsNot Nothing Then
+            If email.Length > Validation.MaxEmailLength Then
+                errors("email") = "The e-mail can be at most " & Validation.MaxEmailLength & " characters."
+            ElseIf Not Validation.IsValidEmail(email) Then
+                errors("email") = "Enter a valid e-mail, e.g. name@gmail.com."
+            ElseIf UserRepository.EmailExists(email, u.UserId) Then
+                errors("email") = "Another account already uses this e-mail."
+            End If
         End If
 
         If Not Roles.All.Contains(u.Role) Then
@@ -146,6 +159,7 @@ Public NotInheritable Class UserService
         If errors.Count > 0 Then Return errors.Values.First()
         u.Username = u.Username.Trim()
         u.FullName = u.FullName.Trim()
+        u.Email = If(Validation.NormalizeEmail(u.Email), "")
         u.PasswordHash = AuthService.HashPassword(password)
         u.IsActive = True
         If u.Role <> Roles.Owner Then u.BusinessId = Nothing
@@ -165,11 +179,15 @@ Public NotInheritable Class UserService
         Dim errors = ValidateUser(u, False)
         If errors.Count > 0 Then Return errors.Values.First()
         If u.Role <> Roles.Owner Then u.BusinessId = Nothing
+        u.Email = If(Validation.NormalizeEmail(u.Email), "")
         u.IsActive = existing.IsActive          ' activation has its own action
         If Not UserRepository.Update(u) Then Return "The account could not be saved. Please try again."
 
         Dim changes As New List(Of String)
         If existing.FullName <> u.FullName.Trim() Then changes.Add("name '" & existing.FullName & "' -> '" & u.FullName.Trim() & "'")
+        If existing.Email <> u.Email Then
+            changes.Add("e-mail " & If(existing.Email = "", "none", existing.Email) & " -> " & If(u.Email = "", "none", u.Email))
+        End If
         If existing.Role <> u.Role Then changes.Add("role " & existing.Role & " -> " & u.Role)
         If Not Nullable.Equals(existing.BusinessId, u.BusinessId) Then
             changes.Add("business " & If(existing.BusinessId?.ToString(), "none") & " -> " & If(u.BusinessId?.ToString(), "none"))

@@ -4,6 +4,7 @@ Public Class User
     Public Property Username As String = ""
     Public Property PasswordHash As String = ""      ' BCrypt hash - never show in the UI
     Public Property FullName As String = ""
+    Public Property Email As String = ""             ' trimmed + lower case; "" = none (Forgot Password needs it)
     Public Property Role As String = ""              ' see Roles constants
     Public Property BusinessId As Integer?           ' only set for Owner accounts
     Public Property IsActive As Boolean = True

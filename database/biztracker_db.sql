@@ -18,7 +18,7 @@ DROP TABLE IF EXISTS audit_log, notifications, settings,
   rpt_payments, rpt_assessments, properties,
   health_certificates, employees, sanitary_permits,
   requirements, clearance_endorsements, business_permits,
-  users, businesses;
+  password_resets, users, businesses;
 SET FOREIGN_KEY_CHECKS = 1;
 
 -- =====================================================================
@@ -47,6 +47,7 @@ CREATE TABLE users (
   username       VARCHAR(50)  NOT NULL UNIQUE,
   password_hash  VARCHAR(100) NOT NULL,
   full_name      VARCHAR(150) NOT NULL,
+  email          VARCHAR(150) NULL UNIQUE,       -- trimmed + lower case; needed for Forgot Password
   role           ENUM('Admin','BPLO','Health','Assessor','Building','Inspector','Owner') NOT NULL,
   business_id    INT NULL,                       -- only for Owner accounts
   is_active      TINYINT(1) NOT NULL DEFAULT 1,
@@ -55,6 +56,22 @@ CREATE TABLE users (
   INDEX idx_users_business (business_id),
   CONSTRAINT fk_users_business FOREIGN KEY (business_id)
     REFERENCES businesses(business_id) ON DELETE RESTRICT ON UPDATE CASCADE
+) ENGINE=InnoDB;
+
+-- Forgot Password: one row per 6-digit code e-mailed to a user.
+-- The code itself is never stored, only its BCrypt hash. A code is usable while
+-- used_at IS NULL, expires_at is in the future and attempts < 5.
+CREATE TABLE password_resets (
+  reset_id    INT AUTO_INCREMENT PRIMARY KEY,
+  user_id     INT NOT NULL,
+  code_hash   VARCHAR(100) NOT NULL,
+  expires_at  DATETIME NOT NULL,
+  attempts    TINYINT UNSIGNED NOT NULL DEFAULT 0,   -- wrong guesses so far
+  created_at  DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  used_at     DATETIME NULL,                         -- set when used OR invalidated
+  INDEX idx_pr_user (user_id, created_at),
+  CONSTRAINT fk_pr_user FOREIGN KEY (user_id)
+    REFERENCES users(user_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
 
 -- ---------- Business Permit ----------
@@ -346,19 +363,34 @@ INSERT INTO settings (setting_key, setting_value, description) VALUES
 
 -- ---------- Businesses ----------
 INSERT INTO businesses (business_id, business_name, owner_name, address, barangay, business_type, line_of_business, is_food_business, dti_sec_no, tin, contact_no, email) VALUES
-(1, 'Cristan''s Bakeshop',          'Cristan Dela Cruz', '12 Rizal St.',       'Centro 01',  'Sole Proprietorship', 'Bakery and Pastry Shop', 1, 'DTI-3456789', '123-456-789-000', '09171234567', 'cristan.bakeshop@email.com'),
-(2, 'Santos General Merchandise',   'Maria Santos',      '45 Bonifacio St.',   'Centro 03',  'Sole Proprietorship', 'Retail - General Merchandise', 0, 'DTI-4567890', '234-567-890-000', '09182345678', 'santos.gm@email.com'),
-(3, 'Kusina ni Aling Rosa',         'Rosa Mendoza',      '8 Maharlika Hwy.',   'Macanaya',   'Sole Proprietorship', 'Restaurant / Eatery', 1, 'DTI-5678901', '345-678-901-000', '09193456789', 'kusina.rosa@email.com');
+(1, 'Cristan''s Bakeshop',          'Cristan Dela Cruz', '12 Rizal St.',       'Centro 01',  'Sole Proprietorship', 'Bakery and Pastry Shop', 1, 'DTI-3456789', '123-456-789-000', '09171234567', 'cristan.bakeshop@example.com'),
+(2, 'Santos General Merchandise',   'Maria Santos',      '45 Bonifacio St.',   'Centro 03',  'Sole Proprietorship', 'Retail - General Merchandise', 0, 'DTI-4567890', '234-567-890-000', '09182345678', 'santos.gm@example.com'),
+(3, 'Kusina ni Aling Rosa',         'Rosa Mendoza',      '8 Maharlika Hwy.',   'Macanaya',   'Sole Proprietorship', 'Restaurant / Eatery', 1, 'DTI-5678901', '345-678-901-000', '09193456789', 'kusina.rosa@example.com');
 
 -- ---------- Users (password for all: password123) ----------
-INSERT INTO users (user_id, username, password_hash, full_name, role, business_id) VALUES
-(1, 'admin',     @HASH, 'System Administrator',     'Admin',     NULL),
-(2, 'bplo',      @HASH, 'Liza Ramirez',             'BPLO',      NULL),
-(3, 'health',    @HASH, 'Dr. Paolo Agustin',        'Health',    NULL),
-(4, 'assessor',  @HASH, 'Ramon Villanueva',         'Assessor',  NULL),
-(5, 'building',  @HASH, 'Engr. Teresa Castillo',    'Building',  NULL),
-(6, 'inspector', @HASH, 'Insp. Mark Del Rosario',   'Inspector', NULL),
-(7, 'owner',     @HASH, 'Cristan Dela Cruz',        'Owner',     1);
+-- E-mails use @example.com so test password resets never reach a real inbox.
+INSERT INTO users (user_id, username, password_hash, full_name, email, role, business_id) VALUES
+(1, 'admin',     @HASH, 'System Administrator',     'admin@example.com',     'Admin',     NULL),
+(2, 'bplo',      @HASH, 'Liza Ramirez',             'bplo@example.com',      'BPLO',      NULL),
+(3, 'health',    @HASH, 'Dr. Paolo Agustin',        'health@example.com',    'Health',    NULL),
+(4, 'assessor',  @HASH, 'Ramon Villanueva',         'assessor@example.com',  'Assessor',  NULL),
+(5, 'building',  @HASH, 'Engr. Teresa Castillo',    'building@example.com',  'Building',  NULL),
+(6, 'inspector', @HASH, 'Insp. Mark Del Rosario',   'inspector@example.com', 'Inspector', NULL),
+(7, 'owner',     @HASH, 'Cristan Dela Cruz',        NULL,                    'Owner',     1);
+
+-- Owner accounts use their business e-mail, but only when no other account has it
+-- (users.email is UNIQUE; co-owners or one owner of several businesses may share an e-mail).
+-- Same rule as database/migrations/2026-10-15_forgot_password.sql.
+UPDATE users u
+JOIN businesses b ON b.business_id = u.business_id
+SET u.email = LOWER(TRIM(b.email))
+WHERE u.role = 'Owner' AND u.email IS NULL AND TRIM(COALESCE(b.email, '')) <> ''
+  AND NOT EXISTS (SELECT 1 FROM (SELECT email FROM users WHERE email IS NOT NULL) used
+                  WHERE used.email = LOWER(TRIM(b.email)))
+  AND (SELECT COUNT(*) FROM (SELECT o.user_id, LOWER(TRIM(ob.email)) AS email
+                             FROM users o JOIN businesses ob ON ob.business_id = o.business_id
+                             WHERE o.role = 'Owner' AND o.email IS NULL) wanted
+       WHERE wanted.email = LOWER(TRIM(b.email))) = 1;
 
 -- ---------- Business Permits ----------
 -- Bakeshop: current year Issued, next year renewal Under Review (filed early)

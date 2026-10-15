@@ -10,3 +10,6 @@ obj/
 # Uploaded requirement files (keep the folder itself)
 uploads/*
 !uploads/.gitkeep
+
+# Gmail address + App Password for Forgot Password (only the .example.json template is committed)
+email-settings.json

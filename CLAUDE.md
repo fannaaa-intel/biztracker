@@ -76,7 +76,8 @@ Sidebar items are hidden for modules a role cannot access.
 Permit Vault (issued documents + Verify Document) is its own sidebar item (decided by the user in Phase 13): Admin, BPLO, Owner.
 
 ## Database tables (actual schema)
-Source of truth: `database/biztracker_db.sql` (one file: CREATE DATABASE + all 18 tables + seed data).
+Source of truth: `database/biztracker_db.sql` (one file: CREATE DATABASE + all 19 tables + seed data).
+Existing databases are upgraded with the scripts in `database/migrations/` (keep data, safe to re-run).
 If this section and the SQL file ever disagree, the SQL file wins. All tables are InnoDB, utf8mb4.
 All foreign keys are `ON DELETE RESTRICT ON UPDATE CASCADE`. `NULL` = nullable; everything else is NOT NULL.
 Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FKs to `users.user_id`.
@@ -86,8 +87,12 @@ Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FK
   line_of_business, is_food_business TINYINT(1) default 0, dti_sec_no NULL, tin NULL, contact_no NULL, email NULL,
   is_active TINYINT(1) default 1, created_at)
 - `users` (user_id PK, username UNIQUE, password_hash (BCrypt), full_name,
+  email VARCHAR(150) NULL UNIQUE (stored trimmed + lower case; needed for Forgot Password),
   role ENUM('Admin','BPLO','Health','Assessor','Building','Inspector','Owner'),
   business_id NULL FK→businesses (Owner accounts only), is_active default 1, last_login DATETIME NULL, created_at)
+- `password_resets` (reset_id PK, user_id FK→users, code_hash (BCrypt of the 6-digit code), expires_at DATETIME,
+  attempts TINYINT UNSIGNED default 0, created_at, used_at DATETIME NULL (set when used OR invalidated))
+  — Forgot Password codes: valid 10 minutes, single use, cancelled after 5 wrong attempts, 60 s resend cooldown
 - `business_permits` (permit_id PK, business_id FK, reference_no UNIQUE, application_type ENUM('New','Renewal'),
   permit_year YEAR, status ENUM('Submitted','Under Review','For Assessment','Assessed','Paid','Issued','Rejected') default 'Submitted',
   gross_receipts DECIMAL(14,2) default 0, assessed_amount DECIMAL(12,2) default 0, surcharge DECIMAL(12,2) default 0,

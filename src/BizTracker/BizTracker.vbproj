@@ -17,6 +17,8 @@
   <ItemGroup>
     <!-- HTML templates for printable documents (ReportService reads them next to the .exe) -->
     <None Update="Templates\**\*.html" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Gmail settings for Forgot Password (NOT in Git, see docs/EMAIL_SETUP.md); copied only if it exists -->
+    <None Update="email-settings.json" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
   <ItemGroup>

@@ -1,0 +1,6 @@
+{
+  "_readme": "Copy this file to email-settings.json (same folder) and fill in the two values. email-settings.json is in .gitignore - never commit it. Guide: docs/EMAIL_SETUP.md",
+  "GmailAddress": "PUT-YOUR-GMAIL-ADDRESS-HERE@gmail.com",
+  "AppPassword": "PUT-YOUR-16-LETTER-APP-PASSWORD-HERE",
+  "SenderName": "BizTracker - Municipality of Aparri"
+}

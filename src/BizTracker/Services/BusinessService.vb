@@ -80,7 +80,7 @@ Public NotInheritable Class BusinessService
         Dim email = If(b.Email, "").Trim()
         If email.Length > 150 Then
             errors("email") = "At most 150 characters."
-        ElseIf email <> "" AndAlso Not Regex.IsMatch(email, "^[^@\s]+@[^@\s]+\.[^@\s]+$") Then
+        ElseIf email <> "" AndAlso Not Validation.IsValidEmail(email) Then
             errors("email") = "Enter a valid e-mail, e.g. name@email.com."
         End If
         Return errors
@@ -158,7 +158,8 @@ Public NotInheritable Class BusinessService
     Public Shared Function NewOwnerAccount(b As Business) As User
         Return New User With {
             .Role = Roles.Owner, .BusinessId = b.BusinessId, .BusinessName = b.BusinessName,
-            .FullName = b.OwnerName, .Username = UserService.SuggestUsername(b.BusinessName)
+            .FullName = b.OwnerName, .Username = UserService.SuggestUsername(b.BusinessName),
+            .Email = If(Validation.NormalizeEmail(b.Email), "")       ' pre-filled from the business, still editable
         }
     End Function
 

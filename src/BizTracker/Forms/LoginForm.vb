@@ -140,15 +140,18 @@ Public Class LoginForm
         UiHelper.StylePrimaryButton(btnLogin)
         AddHandler btnLogin.Click, AddressOf BtnLogin_Click
 
-        Dim lblFooter As New Label With {
-            .Text = "Forgot your password? Please contact the system administrator.",
-            .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted,
-            .AutoSize = False, .TextAlign = ContentAlignment.MiddleCenter
+        ' "Forgot your password?" opens the e-mail code reset (ForgotPasswordDialog)
+        Dim lblFooter As New LinkLabel With {
+            .Text = "Forgot your password?",
+            .Font = Theme.SmallBoldFont, .LinkColor = Theme.SidebarBlue, .ActiveLinkColor = Theme.SidebarActive,
+            .LinkBehavior = LinkBehavior.HoverUnderline,
+            .AutoSize = False, .TextAlign = ContentAlignment.MiddleCenter, .TabStop = True
         }
         lblFooter.SetBounds(x0, 520, w0, 24)
+        AddHandler lblFooter.LinkClicked, AddressOf ForgotPassword_Click
 
-        ' Tab order: username -> password -> show password -> sign in
-        userBox.TabIndex = 0 : passBox.TabIndex = 1 : chkShowPassword.TabIndex = 2 : btnLogin.TabIndex = 3
+        ' Tab order: username -> password -> show password -> sign in -> forgot password
+        userBox.TabIndex = 0 : passBox.TabIndex = 1 : chkShowPassword.TabIndex = 2 : btnLogin.TabIndex = 3 : lblFooter.TabIndex = 4
 
         formPanel.Controls.AddRange({btnClose, lblWelcome, lblHint, lblUser, userBox, lblPass, passBox,
                                      chkShowPassword, errorBox, btnLogin, lblFooter})
@@ -308,6 +311,20 @@ Public Class LoginForm
         Else
             txtPassword.Focus()
         End If
+    End Sub
+
+    ''' <summary>Opens Forgot Password; afterwards the username is filled in so the user can sign in.</summary>
+    Private Sub ForgotPassword_Click(sender As Object, e As LinkLabelLinkClickedEventArgs)
+        HideError()
+        Dim typed = txtUsername.Text.Trim()
+        Using dlg As New ForgotPasswordDialog(typed)
+            If dlg.ShowDialog(Me) <> DialogResult.OK Then Return
+            If Not dlg.Login.Contains("@"c) Then txtUsername.Text = dlg.Login
+        End Using
+        ' The lockout for this username was cleared by the reset
+        If lockTimer.Enabled Then LockTimer_Tick(Nothing, EventArgs.Empty)
+        txtPassword.Clear()
+        txtPassword.Focus()
     End Sub
 
     Private Sub StartLockCountdown()

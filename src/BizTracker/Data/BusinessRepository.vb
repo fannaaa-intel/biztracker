@@ -76,7 +76,7 @@ Public NotInheritable Class BusinessRepository
             Db.P("@dti", Db.NullIfEmpty(b.DtiSecNo)),
             Db.P("@tin", Db.NullIfEmpty(b.Tin)),
             Db.P("@contact", Db.NullIfEmpty(b.ContactNo)),
-            Db.P("@email", Db.NullIfEmpty(b.Email)),
+            Db.P("@email", Validation.NormalizeEmail(b.Email)),
             Db.P("@active", b.IsActive)
         }
     End Function

@@ -79,6 +79,11 @@ Public NotInheritable Class AuthService
         Return If(remaining > 0, CInt(Math.Ceiling(remaining)), 0)
     End Function
 
+    ''' <summary>Removes a username's failed attempts and lockout (after Forgot Password changed the password).</summary>
+    Public Shared Sub ClearLockout(username As String)
+        Attempts.Remove(If(username, "").Trim().ToLowerInvariant())
+    End Sub
+
     ''' <summary>Creates a BCrypt hash for a new or reset password.</summary>
     Public Shared Function HashPassword(password As String) As String
         Return BCrypt.Net.BCrypt.HashPassword(password)
