@@ -7,6 +7,10 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{2A864D1C-1E2
 EndProject
 Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BizTracker", "src\BizTracker\BizTracker.vbproj", "{52C1AA33-4541-4576-BA62-C4A912452430}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{EA8E5C3C-0798-45B4-B635-0B50D9D275C3}"
+EndProject
+Project("{F184B08F-C81C-45F6-A57F-5ABD9991F28F}") = "BizTracker.Tests", "tests\BizTracker.Tests\BizTracker.Tests.vbproj", "{8CA7AD45-E930-4B95-AA3E-9269D769BCBE}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -20,8 +24,13 @@ Global
 		{52C1AA33-4541-4576-BA62-C4A912452430}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{52C1AA33-4541-4576-BA62-C4A912452430}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{52C1AA33-4541-4576-BA62-C4A912452430}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8CA7AD45-E930-4B95-AA3E-9269D769BCBE}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8CA7AD45-E930-4B95-AA3E-9269D769BCBE}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8CA7AD45-E930-4B95-AA3E-9269D769BCBE}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8CA7AD45-E930-4B95-AA3E-9269D769BCBE}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(NestedProjects) = preSolution
 		{52C1AA33-4541-4576-BA62-C4A912452430} = {2A864D1C-1E22-4435-BBE5-21CF190A7D6A}
+		{8CA7AD45-E930-4B95-AA3E-9269D769BCBE} = {EA8E5C3C-0798-45B4-B635-0B50D9D275C3}
 	EndGlobalSection
 EndGlobal

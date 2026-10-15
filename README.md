@@ -235,6 +235,12 @@ BizTracker/
 A manual test script for every role is in **[docs/TEST_CHECKLIST.md](docs/TEST_CHECKLIST.md)**.
 Re-import `database/biztracker_db.sql` before you start, so the numbers match.
 
+Automated regression tests:
+- `dotnet test`: the RPT and business tax rules (penalty, surcharge, interest, payment split). No database needed.
+- `bash tests/migrations/run_migration_test.sh` (Git Bash, MySQL running): upgrades a copy of the pre-Revision-1
+  database with the scripts in `database/migrations/` (twice) and checks that the result matches a fresh
+  `biztracker_db.sql`. It only uses scratch databases and never touches your real `biztracker_db`.
+
 ## Troubleshooting
 
 | Message | Fix |

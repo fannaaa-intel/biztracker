@@ -13,3 +13,6 @@ uploads/*
 
 # Gmail address + App Password for Forgot Password (only the .example.json template is committed)
 email-settings.json
+
+# Local database backups (mysqldump) - never commit
+backups/
