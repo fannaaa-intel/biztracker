@@ -17,6 +17,8 @@ End Class
 '''   - Occupancy -> Completed          : Occupancy clearance Approved
 ''' A clearance can be decided only when its stage is reached. Approving the Locational clearance
 ''' endorses Zoning on the business permit application. Status: Active / On Hold / Completed / Rejected.
+''' Optional estimated start / completion dates give a computed schedule (StatusService.GetScheduleStatus):
+''' Not Started / On Schedule / Behind Schedule.
 ''' Building and Admin make changes; an Owner may file a project and upload documents for their own business.
 ''' Every change is written to audit_log.
 ''' </summary>
@@ -125,9 +127,47 @@ Public NotInheritable Class ConstructionService
         Return clearances.AsEnumerable().Count(Function(c) c.Status = Approved) & " of " & ClearanceTypes.All.Length & " approved"
     End Function
 
+    ' ==================== Schedule (computed, never stored) ====================
+
+    ''' <summary>Not Started / On Schedule / Behind Schedule / Completed / No Schedule.</summary>
+    Public Shared Function GetSchedule(p As ConstructionProject) As String
+        If p Is Nothing Then Return StatusService.NoSchedule
+        Return StatusService.GetScheduleStatus(p.EstStartDate, p.EstEndDate, p.Status)
+    End Function
+
+    ''' <summary>"180 days (about 6 months)" / "45 days" / "Not given".</summary>
+    Public Shared Function GetDurationText(estStart As Date?, estEnd As Date?) As String
+        If Not estStart.HasValue OrElse Not estEnd.HasValue Then Return "Not given"
+        Dim days = StatusService.GetDurationDays(estStart.Value, estEnd.Value)
+        Dim text = days & If(days = 1, " day", " days")
+        If days >= 60 Then text &= " (about " & Math.Round(days / 30.4) & " months)"
+        Return text
+    End Function
+
+    ''' <summary>Short explanation next to the schedule: "starts in 20 days" / "60 days left" / "10 days past the estimated completion".</summary>
+    Public Shared Function GetScheduleNote(p As ConstructionProject) As String
+        Select Case GetSchedule(p)
+            Case StatusService.NotStarted
+                Return "starts in " & DayText(StatusService.DaysUntil(p.EstStartDate.Value))
+            Case StatusService.OnSchedule
+                Dim left = StatusService.DaysUntil(p.EstEndDate.Value)
+                Return If(left = 0, "estimated completion is today", DayText(left) & " left")
+            Case StatusService.BehindSchedule
+                Return DayText(-StatusService.DaysUntil(p.EstEndDate.Value)) & " past the estimated completion"
+            Case StatusService.NoSchedule
+                Return If(p IsNot Nothing AndAlso p.Status = Rejected, "project rejected", "no estimated dates")
+            Case Else
+                Return "project completed"
+        End Select
+    End Function
+
+    Private Shared Function DayText(days As Integer) As String
+        Return days & If(days = 1, " day", " days")
+    End Function
+
     ' ==================== Filing / editing ====================
 
-    ''' <summary>Checks a project. Keys: "title", "type", "cost".</summary>
+    ''' <summary>Checks a project. Keys: "title", "type", "cost", "start", "end".</summary>
     Public Shared Function ValidateProject(p As ConstructionProject) As Dictionary(Of String, String)
         Dim errors As New Dictionary(Of String, String)
         If String.IsNullOrWhiteSpace(p.ProjectTitle) Then
@@ -141,6 +181,16 @@ Public NotInheritable Class ConstructionService
                 errors("cost") = "The estimated cost must be greater than zero (or leave it blank)."
             ElseIf p.EstimatedCost.Value > 999999999999D Then
                 errors("cost") = "The estimated cost is too large."
+            End If
+        End If
+        ' Schedule: both dates or none, completion not before the start, at most 10 years
+        If p.EstStartDate.HasValue <> p.EstEndDate.HasValue Then
+            errors(If(p.EstStartDate.HasValue, "end", "start")) = "Enter both estimated dates (or neither)."
+        ElseIf p.EstStartDate.HasValue Then
+            If p.EstEndDate.Value.Date < p.EstStartDate.Value.Date Then
+                errors("end") = "The estimated completion cannot be before the start."
+            ElseIf p.EstEndDate.Value.Date > p.EstStartDate.Value.Date.AddYears(10) Then
+                errors("end") = "The estimated duration can be at most 10 years."
             End If
         End If
         Return errors
@@ -174,7 +224,7 @@ Public NotInheritable Class ConstructionService
         Return Nothing
     End Function
 
-    ''' <summary>Staff edit of title / type / cost while the project is not Completed or Rejected.</summary>
+    ''' <summary>Staff edit of title / type / cost / estimated dates while the project is not Completed or Rejected.</summary>
     Public Shared Function UpdateProject(p As ConstructionProject) As String
         If Not AccessService.CanManage(AppScreen.ConstructionPermits) Then Return "You are not allowed to edit projects."
         Dim existing = ConstructionRepository.GetById(p.ProjectId)
@@ -186,9 +236,20 @@ Public NotInheritable Class ConstructionService
         existing.ProjectTitle = p.ProjectTitle.Trim()
         existing.ProjectType = p.ProjectType
         existing.EstimatedCost = p.EstimatedCost
+        Dim oldSchedule = ScheduleText(existing)
+        existing.EstStartDate = p.EstStartDate
+        existing.EstEndDate = p.EstEndDate
         If Not ConstructionRepository.Update(existing) Then Return "The project could not be saved."
-        AuditService.LogUpdate(TableName, p.ProjectId, "Edited construction project " & existing.ReferenceNo)
+        Dim newSchedule = ScheduleText(existing)
+        AuditService.LogUpdate(TableName, p.ProjectId, "Edited construction project " & existing.ReferenceNo &
+                               If(oldSchedule <> newSchedule, " (schedule " & oldSchedule & " -> " & newSchedule & ")", ""))
         Return Nothing
+    End Function
+
+    ''' <summary>"2026-11-05 to 2027-05-04" or "none" (for the audit log).</summary>
+    Private Shared Function ScheduleText(p As ConstructionProject) As String
+        If Not p.EstStartDate.HasValue OrElse Not p.EstEndDate.HasValue Then Return "none"
+        Return p.EstStartDate.Value.ToString("yyyy-MM-dd") & " to " & p.EstEndDate.Value.ToString("yyyy-MM-dd")
     End Function
 
     ' ==================== Clearances ====================

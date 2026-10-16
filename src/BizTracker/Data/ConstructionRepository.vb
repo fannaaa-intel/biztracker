@@ -36,8 +36,8 @@ Public NotInheritable Class ConstructionRepository
     Public Shared Function Insert(p As ConstructionProject) As Integer
         Const projectSql As String =
             "INSERT INTO construction_projects (business_id, reference_no, project_title, project_type, " &
-            "  current_stage, status, estimated_cost, date_filed) " &
-            "VALUES (@bid, @ref, @title, @type, @stage, @status, @cost, @filed)"
+            "  current_stage, status, estimated_cost, date_filed, est_start_date, est_end_date) " &
+            "VALUES (@bid, @ref, @title, @type, @stage, @status, @cost, @filed, @start, @end)"
         Const clearanceSql As String =
             "INSERT INTO construction_clearances (project_id, clearance_type, status) VALUES (@pid, @type, 'Pending')"
 
@@ -57,7 +57,8 @@ Public NotInheritable Class ConstructionRepository
     Public Shared Function Update(p As ConstructionProject) As Boolean
         Const sql As String =
             "UPDATE construction_projects SET project_title = @title, project_type = @type, " &
-            "  current_stage = @stage, status = @status, estimated_cost = @cost, date_filed = @filed " &
+            "  current_stage = @stage, status = @status, estimated_cost = @cost, date_filed = @filed, " &
+            "  est_start_date = @start, est_end_date = @end " &
             "WHERE project_id = @id"
         Return Db.ExecuteNonQuery(sql, ToParameters(p).Append(Db.P("@id", p.ProjectId)).ToArray()) > 0
     End Function
@@ -109,7 +110,9 @@ Public NotInheritable Class ConstructionRepository
             Db.P("@stage", p.CurrentStage),
             Db.P("@status", p.Status),
             Db.P("@cost", p.EstimatedCost),
-            Db.P("@filed", p.DateFiled.Date)
+            Db.P("@filed", p.DateFiled.Date),
+            Db.P("@start", p.EstStartDate?.Date),
+            Db.P("@end", p.EstEndDate?.Date)
         }
     End Function
 
@@ -128,6 +131,8 @@ Public NotInheritable Class ConstructionRepository
             .Status = row.GetString("status"),
             .EstimatedCost = row.GetNullableDecimal("estimated_cost"),
             .DateFiled = row.GetDate("date_filed"),
+            .EstStartDate = row.GetNullableDate("est_start_date"),
+            .EstEndDate = row.GetNullableDate("est_end_date"),
             .CreatedAt = row.GetDate("created_at"),
             .BusinessName = row.GetString("business_name")
         }

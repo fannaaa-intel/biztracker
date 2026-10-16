@@ -261,3 +261,81 @@ Expected Outcome, Gantt chart, DFD (Level 0 + Level 1 with all external entities
 Use Case diagram (all roles), ERD (new — export from phpMyAdmin Designer), and new screenshots.
 
 **Minimum demo if time runs out:** Phases 1–6 + Phase 11 (Dashboard).
+
+---
+
+## Revision 4 — Panel feedback (Oct 2026)
+Done: Revision 1 (Forgot Password), 2A (RPT payments), 2B (business tax payments). Revision 3 (Treasurer role) is still planned.
+Each item below is its own revision: do ONE, build, test, commit, `/clear`, then the next.
+Every revision that changes the schema must: update `database/biztracker_db.sql` (tables + seed data that keeps ONE
+consistent story), add a re-runnable script in `database/migrations/` (`ADD COLUMN IF NOT EXISTS`, keeps data),
+extend `tests/migrations/run_migration_test.sh`, and update the "Database tables" section of CLAUDE.md.
+
+### Revision 4A — Construction: estimated start / end dates
+```
+Read CLAUDE.md. Do Revision 4A only.
+- construction_projects: add est_start_date DATE NULL and est_end_date DATE NULL (CHECK est_end_date >= est_start_date).
+- ConstructionProjectDialog: two date pickers ("Estimated start", "Estimated completion"), validated end >= start.
+- Duration (days / months) and a schedule status are COMPUTED in StatusService, never stored:
+  Not Started (today < start), On Schedule, Behind Schedule (today > end and project not Completed), Completed.
+- ConstructionPermitView grid + detail: show Est. Start, Est. End, Duration, Schedule (colors: green / amber / red).
+- AlertService: Warning when a project is Behind Schedule (same de-duplication rule as other alerts).
+- Seed: one project On Schedule, one Behind Schedule (end = DATE_SUB(CURDATE(), INTERVAL 10 DAY)), one Not Started.
+```
+**Check:** Edit a project's dates → duration updates; a Behind Schedule project shows red and appears in alerts.
+
+### Revision 4B — Employees: still working? (hire / separation dates + summary)
+```
+Read CLAUDE.md. Do Revision 4B only.
+- employees: add date_hired DATE NULL and date_separated DATE NULL (CHECK date_separated >= date_hired).
+  is_active stays the flag; deactivating an employee asks for the separation date, reactivating clears it.
+- EmployeeDialog: Date hired; status "Currently employed" / "Separated" + separation date.
+- New "Employees Summary" (in the Health Certificates module, also visible to Owner for their own business):
+  per business — total employees, active, separated, and of the ACTIVE ones: Valid / Expiring Soon / Expired /
+  No health certificate (computed via StatusService). Search box + grid, click a business to see its employees.
+- Separated employees no longer count in dashboard health-certificate numbers or alerts.
+- Seed: a few separated employees (with dates) so the summary shows both states; dashboard still matches.
+```
+**Check:** Separate an employee → active count drops, separated count rises, their expiring certificate alert disappears.
+
+### Revision 4C — Admin: Pending Applications queue (who to serve first)
+```
+Read CLAUDE.md. Do Revision 4C only.
+- New Admin page "Pending Applications": every application not yet finished, from all modules, ONE list sorted
+  by date filed (oldest first): Business Permit (not Issued/Rejected), Sanitary Permit (not Issued/Rejected),
+  Construction Permit (status Active, pending clearance), Annual Inspection (Scheduled / In Progress / For Re-inspection).
+- Columns: Date Filed, Reference No, Business, Module, Application Type, Current Status, Days Waiting, Processing Limit.
+- Days Waiting = working days (Mon–Fri) since date_filed, computed in a service, not stored.
+  Processing limits per RA 11032 in settings: arta_simple_days = 3, arta_complex_days = 7, arta_technical_days = 20
+  (BP Renewal = simple; BP New, Sanitary, Inspection = complex; Construction = technical).
+  Amber when within 1 day of the limit, red when over.
+- Filter by module + search box. Double-click opens the record in its module (read-only for Admin is fine).
+- Seed: at least one application per module over its limit, so the red rows show during the demo.
+```
+**Check:** The oldest application is at the top; filing a new one adds it at the bottom with 0 days waiting.
+
+### Revision 4D — Policies & Requirements per permit
+```
+Read CLAUDE.md. Do Revision 4D only.
+- A "Policies & Requirements" button in each of the 6 modules opens a read-only dialog for that service:
+  legal basis (RA 7160, RA 11032, and the specific law: PD 856 Sanitation Code, PD 1096 Building Code,
+  RA 9514 Fire Code, ...), who processes it, documentary requirements, validity, deadlines, fees/penalties.
+- The text lives in Templates/policies/<module>.html with placeholders ({{bp_surcharge_rate}}, {{expiry_warning_days}},
+  ...) filled from the settings table, so rates shown always equal what the system charges. No SQL in the dialog.
+- Every role that can open a module (including Owner) can read its policies.
+```
+**Check:** Change bp_surcharge_rate in Settings → the Business Permit policy shows the new rate.
+
+### Revision 4E — Terms and Conditions on login
+```
+Read CLAUDE.md. Do Revision 4E only.
+- users: add terms_accepted_version VARCHAR(20) NULL and terms_accepted_at DATETIME NULL.
+  settings: add terms_version (e.g. '1.0'). The text is in Templates/terms.html (system use, account responsibility,
+  Data Privacy Act RA 10173 consent, accuracy of submitted documents, audit logging).
+- After a successful login, if users.terms_accepted_version <> settings.terms_version: show a Terms dialog
+  (scrollable text, "I have read and agree" checkbox, Accept enabled only when ticked, Decline = log out).
+- Accepting saves the version + timestamp and writes an audit_log row (action UPDATE, details 'Accepted terms v1.0').
+- Admin Settings: changing terms_version makes every user accept again on next login.
+- Seed: all seeded users already accepted the current version (so demos are not interrupted), except one Owner.
+```
+**Check:** Log in as that Owner → Terms appear; Decline logs out; Accept → next login goes straight in.

@@ -323,8 +323,11 @@ CREATE TABLE construction_projects (
   status         ENUM('Active','On Hold','Completed','Rejected') NOT NULL DEFAULT 'Active',
   estimated_cost DECIMAL(14,2) NULL,
   date_filed     DATE NOT NULL,
+  est_start_date DATE NULL,                 -- estimated start of construction (Revision 4A)
+  est_end_date   DATE NULL,                 -- estimated completion; schedule status is computed, not stored
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   INDEX idx_cp_business (business_id),
+  CONSTRAINT chk_cp_schedule CHECK (est_start_date IS NULL OR est_end_date IS NULL OR est_end_date >= est_start_date),
   CONSTRAINT fk_cp_business FOREIGN KEY (business_id)
     REFERENCES businesses(business_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
@@ -510,6 +513,14 @@ INSERT INTO requirements (business_id, module, related_id, document_name, file_p
 (1, 'Construction Permit', 1, 'Electrical Plans',              'uploads/1/electrical_plans.pdf', 'Verified',       CURDATE() - INTERVAL 40 DAY, 5, CURDATE() - INTERVAL 35 DAY),
 (1, 'Construction Permit', 1, 'Plumbing / Sanitary Plans',     'uploads/1/plumbing_plans.pdf',   'Submitted',      CURDATE() - INTERVAL 40 DAY, NULL, NULL),
 (1, 'Construction Permit', 1, 'Lot Title & Tax Declaration',   'uploads/1/title_td.pdf',         'Verified',       CURDATE() - INTERVAL 40 DAY, 5, CURDATE() - INTERVAL 35 DAY),
+(2, 'Construction Permit', 2, 'Architectural & Structural Plans', 'uploads/2/arch_struct_plans.pdf', 'Verified', CURDATE() - INTERVAL 118 DAY, 5, CURDATE() - INTERVAL 100 DAY),
+(2, 'Construction Permit', 2, 'Electrical Plans',              'uploads/2/electrical_plans.pdf', 'Verified',       CURDATE() - INTERVAL 118 DAY, 5, CURDATE() - INTERVAL 100 DAY),
+(2, 'Construction Permit', 2, 'Plumbing / Sanitary Plans',     'uploads/2/plumbing_plans.pdf',   'Verified',       CURDATE() - INTERVAL 118 DAY, 5, CURDATE() - INTERVAL 100 DAY),
+(2, 'Construction Permit', 2, 'Lot Title & Tax Declaration',   'uploads/2/title_td.pdf',         'Verified',       CURDATE() - INTERVAL 118 DAY, 5, CURDATE() - INTERVAL 100 DAY),
+(3, 'Construction Permit', 3, 'Architectural & Structural Plans', 'uploads/3/arch_struct_plans.pdf', 'Verified', CURDATE() - INTERVAL 158 DAY, 5, CURDATE() - INTERVAL 140 DAY),
+(3, 'Construction Permit', 3, 'Electrical Plans',              'uploads/3/electrical_plans.pdf', 'Verified',       CURDATE() - INTERVAL 158 DAY, 5, CURDATE() - INTERVAL 140 DAY),
+(3, 'Construction Permit', 3, 'Plumbing / Sanitary Plans',     'uploads/3/plumbing_plans.pdf',   'Verified',       CURDATE() - INTERVAL 158 DAY, 5, CURDATE() - INTERVAL 140 DAY),
+(3, 'Construction Permit', 3, 'Lot Title & Tax Declaration',   'uploads/3/title_td.pdf',         'Verified',       CURDATE() - INTERVAL 158 DAY, 5, CURDATE() - INTERVAL 140 DAY),
 (3, 'Business Permit', 5, 'DTI/SEC Registration',              'uploads/3/dti_registration.pdf', 'Submitted',      CURDATE() - INTERVAL 2 DAY, NULL, NULL),
 (3, 'Business Permit', 5, 'Gross Receipts Declaration',        NULL,                             'Pending Upload', NULL, NULL, NULL),
 (2, 'Business Permit', 6, 'DTI/SEC Registration',              'uploads/2/dti_registration.pdf', 'Verified',       CURDATE() - INTERVAL 10 DAY, 2, CURDATE() - INTERVAL 9 DAY),
@@ -662,14 +673,25 @@ INSERT INTO inspection_items (inspection_id, department, result, findings, inspe
 (3, 'Fire',       'Pending', NULL, NULL, NULL);
 
 -- ---------- Construction Permit ----------
-INSERT INTO construction_projects (project_id, business_id, reference_no, project_title, project_type, current_stage, status, estimated_cost, date_filed) VALUES
-(1, 1, CONCAT('CP-', @Y, '-00001'), 'Warehouse Renovation & Extension', 'Renovation & Extension', 'Building Permit', 'Active', 850000.00, CURDATE() - INTERVAL 40 DAY);
+-- Schedules (computed from today): CP-1 Not Started, CP-2 On Schedule, CP-3 Behind Schedule (end date passed).
+INSERT INTO construction_projects (project_id, business_id, reference_no, project_title, project_type, current_stage, status, estimated_cost, date_filed, est_start_date, est_end_date) VALUES
+(1, 1, CONCAT('CP-', @Y, '-00001'), 'Warehouse Renovation & Extension', 'Renovation & Extension', 'Building Permit', 'Active', 850000.00, CURDATE() - INTERVAL 40 DAY,  CURDATE() + INTERVAL 20 DAY,  CURDATE() + INTERVAL 200 DAY),
+(2, 2, CONCAT('CP-', @Y, '-00002'), 'Store Front Renovation',           'Renovation',             'Construction',    'Active', 320000.00, CURDATE() - INTERVAL 120 DAY, CURDATE() - INTERVAL 60 DAY,  CURDATE() + INTERVAL 60 DAY),
+(3, 3, CONCAT('CP-', @Y, '-00003'), 'Dining Area Extension',            'Extension',              'Construction',    'Active', 540000.00, CURDATE() - INTERVAL 160 DAY, CURDATE() - INTERVAL 100 DAY, CURDATE() - INTERVAL 10 DAY);
 
 INSERT INTO construction_clearances (project_id, clearance_type, clearance_no, status, approved_by, approved_at, remarks) VALUES
 (1, 'Locational', CONCAT('LC-', @Y, '-00001'), 'Approved', 5,    CURDATE() - INTERVAL 25 DAY, 'Conforms to CLUP commercial zone'),
 (1, 'FSEC',       NULL,                         'Pending',  NULL, NULL, 'For BFP evaluation'),
 (1, 'Building',   NULL,                         'Pending',  NULL, NULL, 'Under OBO technical review'),
-(1, 'Occupancy',  NULL,                         'Pending',  NULL, NULL, NULL);
+(1, 'Occupancy',  NULL,                         'Pending',  NULL, NULL, NULL),
+(2, 'Locational', CONCAT('LC-', @Y, '-00002'),   'Approved', 5,    CURDATE() - INTERVAL 105 DAY, 'Conforms to CLUP commercial zone'),
+(2, 'FSEC',       CONCAT('FSEC-', @Y, '-00001'), 'Approved', 5,    CURDATE() - INTERVAL 80 DAY,  'BFP evaluation passed'),
+(2, 'Building',   CONCAT('BLDG-', @Y, '-00001'), 'Approved', 5,    CURDATE() - INTERVAL 70 DAY,  NULL),
+(2, 'Occupancy',  NULL,                         'Pending',  NULL, NULL, NULL),
+(3, 'Locational', CONCAT('LC-', @Y, '-00003'),   'Approved', 5,    CURDATE() - INTERVAL 145 DAY, 'Conforms to CLUP commercial zone'),
+(3, 'FSEC',       CONCAT('FSEC-', @Y, '-00002'), 'Approved', 5,    CURDATE() - INTERVAL 120 DAY, 'BFP evaluation passed'),
+(3, 'Building',   CONCAT('BLDG-', @Y, '-00002'), 'Approved', 5,    CURDATE() - INTERVAL 110 DAY, NULL),
+(3, 'Occupancy',  NULL,                         'Pending',  NULL, NULL, NULL);
 
 -- ---------- Audit Log ----------
 INSERT INTO audit_log (user_id, action, table_name, record_id, details, created_at) VALUES

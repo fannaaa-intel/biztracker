@@ -2,7 +2,7 @@
 ''' Construction Permit module (same structure as BusinessPermitView / SanitaryPermitView).
 '''   Toolbar  : business selector (staff) or the owner's business, and the actions
 '''   Cards    : current stage, clearances approved, technical documents verified, estimated cost
-'''   Left     : projects grid with search
+'''   Left     : projects grid with search (Schedule = computed from the estimated dates)
 '''   Right    : selected project - stage pipeline and tabs (Clearances | Documents | Details)
 ''' No SQL here: everything goes through ConstructionService / repositories.
 ''' </summary>
@@ -16,6 +16,7 @@ Public Class ConstructionPermitView
         Public Property Title As String
         Public Property Stage As String
         Public Property Status As String
+        Public Property Schedule As String
         Public Property Filed As String
     End Class
 
@@ -148,12 +149,13 @@ Public Class ConstructionPermitView
             End Sub
         AddHandler txtSearch.TextChanged, Sub() BindGrid(selected?.ProjectId)
 
-        UiHelper.StyleGrid(grid, "Status")
+        UiHelper.StyleGrid(grid, "Status,Schedule")
         grid.Dock = DockStyle.Fill
         UiHelper.AddGridColumn(grid, "ReferenceNo", "REFERENCE", "ReferenceNo", 125, Dpi(125))
         UiHelper.AddGridColumn(grid, "Title", "PROJECT", "Title", 170, Dpi(120))
         UiHelper.AddGridColumn(grid, "Stage", "STAGE", "Stage", 115, Dpi(115))
         UiHelper.AddGridColumn(grid, "Status", "STATUS", "Status", 115, Dpi(115))
+        UiHelper.AddGridColumn(grid, "Schedule", "SCHEDULE", "Schedule", 140, Dpi(140))
         UiHelper.AddGridColumn(grid, "Filed", "FILED", "Filed", 112, Dpi(112))
         AddHandler grid.SelectionChanged, Sub() If Not loading Then ShowSelected()
         AddHandler grid.CellDoubleClick, Sub(s, e) If e.RowIndex >= 0 Then ViewProject_Click(Nothing, EventArgs.Empty)
@@ -177,8 +179,9 @@ Public Class ConstructionPermitView
 
     ''' <summary>Hides the less important columns when the grid is narrow (reference and status always stay).</summary>
     Private Sub FitGridColumns()
-        grid.Columns("Stage").Visible = grid.Width >= Dpi(380)
-        grid.Columns("Filed").Visible = grid.Width >= Dpi(500)
+        grid.Columns("Schedule").Visible = grid.Width >= Dpi(400)
+        grid.Columns("Stage").Visible = grid.Width >= Dpi(520)
+        grid.Columns("Filed").Visible = grid.Width >= Dpi(640)
         Dim others = grid.Columns.Cast(Of DataGridViewColumn)().
                      Where(Function(c) c.Visible AndAlso c.Name <> "Title").Sum(Function(c) c.MinimumWidth)
         Dim available = grid.Width - others - 4
@@ -276,10 +279,11 @@ Public Class ConstructionPermitView
         Dim term = txtSearch.Text.Trim().ToLowerInvariant()
         Dim rows = projects.
             Where(Function(p) term = "" OrElse
-                              (p.ReferenceNo & " " & p.ProjectTitle & " " & p.ProjectType & " " & p.CurrentStage & " " & p.Status).ToLowerInvariant().Contains(term)).
+                              (p.ReferenceNo & " " & p.ProjectTitle & " " & p.ProjectType & " " & p.CurrentStage & " " & p.Status & " " &
+                               ConstructionService.GetSchedule(p)).ToLowerInvariant().Contains(term)).
             Select(Function(p) New ProjectRow With {
                 .ProjectId = p.ProjectId, .ReferenceNo = p.ReferenceNo, .Title = p.ProjectTitle, .Stage = p.CurrentStage,
-                .Status = p.Status, .Filed = UiHelper.FormatDate(p.DateFiled)
+                .Status = p.Status, .Schedule = ConstructionService.GetSchedule(p), .Filed = UiHelper.FormatDate(p.DateFiled)
             }).ToList()
 
         titleNeed = Math.Max(Dpi(120), rows.Select(Function(r) UiHelper.TextWidth(r.Title, Theme.BodyFont) + 16).DefaultIfEmpty(0).Max())
@@ -397,9 +401,12 @@ Public Class ConstructionPermitView
         lblDetailRef.Text = selected.ReferenceNo
         badgeDetail.Text = selected.Status
         PlaceBadge()
-        Dim info = selected.ProjectTitle & " · " & selected.ProjectType & " · filed " & UiHelper.FormatDate(selected.DateFiled)
+        Dim schedule = ConstructionService.GetSchedule(selected)
+        Dim info = selected.ProjectTitle & " · " & selected.ProjectType & " · filed " & UiHelper.FormatDate(selected.DateFiled) &
+                   If(schedule = StatusService.NoSchedule, "", " · " & schedule & " (" & ConstructionService.GetScheduleNote(selected) & ")")
         lblDetailInfo.Text = info
-        lblDetailInfo.ForeColor = If(selected.Status = ConstructionService.Rejected, Theme.StatusRed, Theme.TextMuted)
+        lblDetailInfo.ForeColor = If(selected.Status = ConstructionService.Rejected OrElse schedule = StatusService.BehindSchedule,
+                                     Theme.StatusRed, Theme.TextMuted)
         tips.SetToolTip(lblDetailInfo, info)
         tracker.CurrentStep = ConstructionService.GetTrackerStep(selected)
 
@@ -474,6 +481,10 @@ Public Class ConstructionPermitView
         rows.Add(InfoRow(tips, "Current stage", selected.CurrentStage, "Status", selected.Status))
         rows.Add(InfoRow(tips, "Estimated cost", If(selected.EstimatedCost.HasValue, UiHelper.FormatMoney(selected.EstimatedCost.Value), "Not given"),
                          "Date filed", UiHelper.FormatDate(selected.DateFiled)))
+        rows.Add(InfoRow(tips, "Estimated start", If(selected.EstStartDate.HasValue, UiHelper.FormatDate(selected.EstStartDate.Value), "Not given"),
+                         "Estimated completion", If(selected.EstEndDate.HasValue, UiHelper.FormatDate(selected.EstEndDate.Value), "Not given")))
+        rows.Add(ListRow(tips, "Schedule · " & ConstructionService.GetDurationText(selected.EstStartDate, selected.EstEndDate),
+                         ConstructionService.GetScheduleNote(selected), ConstructionService.GetSchedule(selected)))
         rows.Add(InfoRow(tips, "Reference", selected.ReferenceNo, "Business", selected.BusinessName))
         rows.Add(NoteRow(tips, "Stages move one at a time; each needs its clearance approved. The Building permit needs the FSEC approved and all technical documents verified.", Theme.TextMuted))
         Return rows

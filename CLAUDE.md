@@ -150,7 +150,9 @@ Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FK
   project_type ENUM('New Construction','Renovation','Extension','Renovation & Extension','Demolition'),
   current_stage ENUM('Locational','Building Permit','Construction','Occupancy','Completed') default 'Locational',
   status ENUM('Active','On Hold','Completed','Rejected') default 'Active', estimated_cost DECIMAL(14,2) NULL,
-  date_filed DATE, created_at)
+  date_filed DATE, est_start_date DATE NULL, est_end_date DATE NULL (CHECK end >= start), created_at)
+  — schedule Not Started / On Schedule / Behind Schedule is COMPUTED in StatusService (Behind = past est_end_date and
+  not Completed; raises a Warning alert), duration = both days counted; dates are optional (both or neither)
 - `construction_clearances` (clearance_id PK, project_id FK, clearance_type ENUM('Locational','FSEC','Building','Occupancy'),
   clearance_no NULL UNIQUE, status ENUM('Pending','Approved','Rejected') default 'Pending',
   approved_by NULL FK→users, approved_at NULL, remarks NULL) — UNIQUE (project_id, clearance_type)

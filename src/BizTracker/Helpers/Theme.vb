@@ -104,13 +104,15 @@ Public NotInheritable Class Theme
     ''' <summary>1 = green, 2 = amber, 3 = red, 0 = gray.</summary>
     Private Shared Function StatusGroup(status As String) As Integer
         Select Case If(status, "").Trim().ToLowerInvariant()
-            Case "valid", "approved", "paid", "issued", "endorsed", "passed", "verified", "completed", "active", "ready"
+            Case "valid", "approved", "paid", "issued", "endorsed", "passed", "verified", "completed", "active", "ready",
+                 "on schedule"
                 Return 1
             Case "pending", "expiring soon", "submitted", "under review", "for assessment",
                  "assessed", "scheduled", "in progress", "pending upload", "due soon",
-                 "lab analysis", "for inspection", "on hold", "unpaid", "late", "partially paid"
+                 "lab analysis", "for inspection", "on hold", "unpaid", "late", "partially paid", "not started"
                 Return 2
-            Case "expired", "overdue", "rejected", "failed", "for re-inspection", "re-inspection", "cancelled", "not issued", "not available"
+            Case "expired", "overdue", "rejected", "failed", "for re-inspection", "re-inspection", "cancelled", "not issued", "not available",
+                 "behind schedule"
                 Return 3
             Case Else
                 Return 0

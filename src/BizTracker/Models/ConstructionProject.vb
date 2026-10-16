@@ -11,6 +11,9 @@ Public Class ConstructionProject
     Public Property Status As String = "Active"     ' Active / On Hold / Completed / Rejected
     Public Property EstimatedCost As Decimal?
     Public Property DateFiled As Date
+    ' Estimated construction schedule (optional). Duration and schedule status are computed, not stored.
+    Public Property EstStartDate As Date?
+    Public Property EstEndDate As Date?
     Public Property CreatedAt As Date
 
     ' Display only (filled from a JOIN, not saved)

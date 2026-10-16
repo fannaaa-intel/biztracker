@@ -1,12 +1,12 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  Migration regression test (Revisions 1, 2A, 2B)
+#  Migration regression test (Revisions 1, 2A, 2B, 4A)
 #
 #  What it checks:
 #    1. The database as it was BEFORE Revision 1 (biztracker_db.sql from git, commit 5a97a84^)
-#       can be upgraded with the three migrations in database/migrations/ without errors.
+#       can be upgraded with the migrations in database/migrations/ without errors.
 #    2. The migrations are safe to run twice (the second run must not fail or change anything).
-#    3. The final checks pass: 0 problem quarters, no duplicate OR numbers.
+#    3. The final checks pass: 0 problem quarters, no duplicate OR numbers, 0 bad construction schedules.
 #    4. The upgraded schema is IDENTICAL to a fresh import of today's database/biztracker_db.sql
 #       (columns, types, defaults, indexes, foreign keys).
 #
@@ -24,7 +24,8 @@ DB_ARGS=(-u root -h 127.0.0.1)
 OLD_DB=biztracker_migtest_old
 NEW_DB=biztracker_migtest_new
 BEFORE_REVISION_1=5a97a84^          # last commit before the Forgot Password revision
-MIGRATIONS=(2026-10-15_forgot_password 2026-10-15_rpt_partial_payments 2026-10-15_bp_payments)
+MIGRATIONS=(2026-10-15_forgot_password 2026-10-15_rpt_partial_payments 2026-10-15_bp_payments
+            2026-10-16_construction_schedule)
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 WORK=$(mktemp -d)
@@ -62,6 +63,8 @@ echo "-- accounts without an e-mail:"; cat "$WORK/2026-10-15_forgot_password.run
 grep -qx "problem_quarters" "$WORK/2026-10-15_rpt_partial_payments.run2.txt" &&
 grep -qx "0" "$WORK/2026-10-15_rpt_partial_payments.run2.txt" || fail "RPT check: problem_quarters is not 0"
 grep -q "times_used" "$WORK/2026-10-15_bp_payments.run2.txt" && fail "duplicate OR numbers found"
+grep -qx "bad_schedules" "$WORK/2026-10-16_construction_schedule.run2.txt" &&
+grep -qx "0" "$WORK/2026-10-16_construction_schedule.run2.txt" || fail "construction check: bad_schedules is not 0"
 echo "-- RPT / business tax checks:"; cat "$WORK/2026-10-15_rpt_partial_payments.run2.txt" "$WORK/2026-10-15_bp_payments.run2.txt"
 
 echo "== 4. Compare with a fresh database/biztracker_db.sql ($NEW_DB)"

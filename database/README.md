@@ -37,6 +37,7 @@ same way (phpMyAdmin > SQL tab > paste > Go). They never drop tables, and runnin
 | `2026-10-15_forgot_password.sql` | `users.email` (unique) and the `password_resets` table. Fills e-mails where it is safe, then lists the accounts still without an e-mail (fix them in Settings > Users). |
 | `2026-10-15_rpt_partial_payments.sql` | Partial RPT payments: drops the one-payment-per-quarter rule and adds payment method, reference no., remarks and voiding to `rpt_payments`. Existing payments become Cash with the same amounts. Ends with a check that must show 0 problem quarters. |
 | `2026-10-15_bp_payments.sql` | Business tax payments (`business_permit_payments`), the shared OR registry (`official_receipts`, filled with every OR already used) and `business_permits.legacy_paid` (permits Paid/Issued before payment recording). Works even if the RPT script was not run yet. Ends with two checks: duplicate OR numbers (must be empty) and the legacy permits. |
+| `2026-10-16_construction_schedule.sql` | Estimated start / completion dates on `construction_projects` (`est_start_date`, `est_end_date`, CHECK end >= start). Existing projects get no dates ("No Schedule" until staff enter them). Ends with a check that must show 0 bad schedules. |
 
 ## Tables
 | # | Table | What it stores |

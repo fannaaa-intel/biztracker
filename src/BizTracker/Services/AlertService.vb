@@ -13,7 +13,8 @@ End Class
 '''   - GenerateAlerts() runs after login: it scans every due / expiry date of the businesses the user may see
 '''     and saves one alert per item and due date (the UNIQUE key prevents duplicates).
 '''       Urgent  = already expired / overdue
-'''       Warning = expires / falls due within expiry_warning_days, or a re-inspection is coming
+'''       Warning = expires / falls due within expiry_warning_days, a re-inspection is coming,
+'''                 or a construction project is past its estimated completion (Behind Schedule)
 '''       Info    = an annual inspection is scheduled within expiry_warning_days
 '''   - Owners see only their business; staff see the alerts of the modules their role can open.
 ''' Every date-based status comes from StatusService / the module services (never stored).
@@ -112,6 +113,14 @@ Public NotInheritable Class AlertService
                                   what & " is scheduled", visit.Value))
             End If
         End If
+
+        ' Construction projects past their estimated completion (due date = the estimated completion)
+        For Each p In ConstructionService.GetProjects(id)
+            If ConstructionService.GetSchedule(p) <> StatusService.BehindSchedule Then Continue For
+            list.Add(NewAlert(id, ModuleNames.ConstructionPermit, p.ProjectId, Warning,
+                              "Construction """ & p.ProjectTitle & """ is behind schedule - estimated completion was " &
+                              UiHelper.FormatDate(p.EstEndDate.Value) & " (" & p.ReferenceNo & ")", p.EstEndDate.Value))
+        Next
 
         Return list
     End Function

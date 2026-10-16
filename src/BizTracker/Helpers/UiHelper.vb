@@ -344,7 +344,8 @@ Public Module UiHelper
 
     ''' <summary>
     ''' Modern, read-only DataGridView look. Scrollbars are hidden; the mouse wheel and the
-    ''' arrow keys still scroll. If statusColumn is given, that column is drawn as colored badges.
+    ''' arrow keys still scroll. If statusColumn is given, that column is drawn as colored badges
+    ''' (several columns: "Status,Schedule").
     ''' </summary>
     Public Sub StyleGrid(grid As DataGridView, Optional statusColumn As String = "")
         grid.BorderStyle = BorderStyle.None
@@ -435,7 +436,7 @@ Public Module UiHelper
     ''' </summary>
     Private Sub PaintCell(grid As DataGridView, e As DataGridViewCellPaintingEventArgs, statusColumn As String)
         If e.ColumnIndex < 0 Then Return
-        Dim isStatus = e.RowIndex >= 0 AndAlso statusColumn <> "" AndAlso grid.Columns(e.ColumnIndex).Name = statusColumn
+        Dim isStatus = e.RowIndex >= 0 AndAlso statusColumn <> "" AndAlso statusColumn.Split(","c).Contains(grid.Columns(e.ColumnIndex).Name)
         ' Fill the WHOLE cell first (including its edge pixels) so no old lines show through
         Dim isSelected = e.RowIndex >= 0 AndAlso (e.State And DataGridViewElementStates.Selected) <> 0
         ' Anti-aliasing OFF for fills/lines: otherwise cell edges are half-painted and dark lines appear

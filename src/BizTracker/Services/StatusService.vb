@@ -2,6 +2,7 @@
 ''' Computes every date-based status from Date.Today. These statuses are NEVER stored in the database.
 '''   - Valid / Expiring Soon / Expired  (health certificates, permits, sanitary permits)
 '''   - Paid / Overdue / Partially Paid / Due Soon / Not Yet Due  (RPT quarters and other due dates)
+'''   - Not Started / On Schedule / Behind Schedule  (construction projects, from their estimated dates)
 ''' "Soon" means within the expiry_warning_days setting (default 30).
 ''' </summary>
 Public NotInheritable Class StatusService
@@ -99,6 +100,37 @@ Public NotInheritable Class StatusService
         If IsOverdue(dueDate) Then Return Overdue
         If isPartiallyPaid Then Return PartiallyPaid
         Return GetDueStatus(dueDate, False)
+    End Function
+
+    ' ==================== Construction schedule ====================
+
+    Public Const NotStarted As String = "Not Started"
+    Public Const OnSchedule As String = "On Schedule"
+    Public Const BehindSchedule As String = "Behind Schedule"
+    Public Const NoSchedule As String = "No Schedule"
+
+    ''' <summary>
+    ''' Schedule of a construction project from its estimated dates:
+    '''   Completed       - the project is Completed
+    '''   No Schedule     - Rejected, or the dates were not given
+    '''   Not Started     - today is before the estimated start
+    '''   Behind Schedule - today is after the estimated completion and the project is not Completed
+    '''   On Schedule     - otherwise (the completion day itself is still on schedule)
+    ''' today is only passed by the tests.
+    ''' </summary>
+    Public Shared Function GetScheduleStatus(estStart As Date?, estEnd As Date?, projectStatus As String,
+                                             Optional today As Date? = Nothing) As String
+        If projectStatus = ConstructionService.Completed Then Return ConstructionService.Completed
+        If projectStatus = ConstructionService.Rejected OrElse Not estStart.HasValue OrElse Not estEnd.HasValue Then Return NoSchedule
+        Dim d = If(today, Date.Today).Date
+        If d < estStart.Value.Date Then Return NotStarted
+        If d > estEnd.Value.Date Then Return BehindSchedule
+        Return OnSchedule
+    End Function
+
+    ''' <summary>Planned duration in days, counting both the start and the end day (Jan 1 - Jan 1 = 1 day).</summary>
+    Public Shared Function GetDurationDays(estStart As Date, estEnd As Date) As Integer
+        Return (estEnd.Date - estStart.Date).Days + 1
     End Function
 
     ' ==================== Validity rules (from CLAUDE.md business rules) ====================
