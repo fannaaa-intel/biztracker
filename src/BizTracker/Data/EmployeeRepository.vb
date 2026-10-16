@@ -1,6 +1,6 @@
 ''' <summary>
 ''' Database access for the employees table.
-''' Employees are deactivated (is_active = 0), never deleted, so their certificates stay on record.
+''' Employees are separated (is_active = 0 + date_separated), never deleted, so their certificates stay on record.
 ''' </summary>
 Public NotInheritable Class EmployeeRepository
 
@@ -27,31 +27,40 @@ Public NotInheritable Class EmployeeRepository
     ''' <summary>Returns the new employee_id, or -1 on error.</summary>
     Public Shared Function Insert(e As Employee) As Integer
         Const sql As String =
-            "INSERT INTO employees (business_id, full_name, position, category, is_active) " &
-            "VALUES (@bid, @name, @position, @category, @active)"
+            "INSERT INTO employees (business_id, full_name, position, category, is_active, date_hired) " &
+            "VALUES (@bid, @name, @position, @category, @active, @hired)"
         Return Db.ExecuteInsert(sql,
             Db.P("@bid", e.BusinessId),
             Db.P("@name", e.FullName.Trim()),
             Db.P("@position", e.Position.Trim()),
             Db.P("@category", e.Category),
-            Db.P("@active", e.IsActive))
+            Db.P("@active", e.IsActive),
+            Db.P("@hired", e.DateHired?.Date))
     End Function
 
     Public Shared Function Update(e As Employee) As Boolean
         Const sql As String =
-            "UPDATE employees SET full_name = @name, position = @position, category = @category, is_active = @active " &
+            "UPDATE employees SET full_name = @name, position = @position, category = @category, is_active = @active, " &
+            "  date_hired = @hired " &
             "WHERE employee_id = @id"
         Return Db.ExecuteNonQuery(sql,
             Db.P("@name", e.FullName.Trim()),
             Db.P("@position", e.Position.Trim()),
             Db.P("@category", e.Category),
             Db.P("@active", e.IsActive),
+            Db.P("@hired", e.DateHired?.Date),
             Db.P("@id", e.EmployeeId)) > 0
     End Function
 
-    ''' <summary>Soft delete.</summary>
-    Public Shared Function Deactivate(employeeId As Integer) As Boolean
-        Return Db.ExecuteNonQuery("UPDATE employees SET is_active = 0 WHERE employee_id = @id",
+    ''' <summary>Soft delete: the employee no longer works there (separated on the given date).</summary>
+    Public Shared Function Deactivate(employeeId As Integer, separatedOn As Date) As Boolean
+        Return Db.ExecuteNonQuery("UPDATE employees SET is_active = 0, date_separated = @sep WHERE employee_id = @id",
+                                  Db.P("@sep", separatedOn.Date), Db.P("@id", employeeId)) > 0
+    End Function
+
+    ''' <summary>Brings a separated employee back (rehired): active again, separation date cleared.</summary>
+    Public Shared Function Reactivate(employeeId As Integer) As Boolean
+        Return Db.ExecuteNonQuery("UPDATE employees SET is_active = 1, date_separated = NULL WHERE employee_id = @id",
                                   Db.P("@id", employeeId)) > 0
     End Function
 
@@ -69,6 +78,8 @@ Public NotInheritable Class EmployeeRepository
             .Position = row.GetString("position"),
             .Category = row.GetString("category"),
             .IsActive = row.GetBool("is_active"),
+            .DateHired = row.GetNullableDate("date_hired"),
+            .DateSeparated = row.GetNullableDate("date_separated"),
             .CreatedAt = row.GetDate("created_at")
         }
     End Function

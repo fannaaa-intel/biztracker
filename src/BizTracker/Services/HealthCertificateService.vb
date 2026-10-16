@@ -38,6 +38,21 @@ Public Class HealthSummary
     Public Property CompliancePercent As Integer
 End Class
 
+''' <summary>
+''' One row of the Employees Summary: who still works at a business (Revision 4B).
+''' The certificate counts are for ACTIVE employees only (separated ones no longer need one).
+''' </summary>
+Public Class BusinessEmployeeSummary
+    Public Property Business As Business
+    Public Property Total As Integer
+    Public Property Active As Integer
+    Public Property Separated As Integer
+    Public Property Valid As Integer
+    Public Property ExpiringSoon As Integer
+    Public Property Expired As Integer
+    Public Property NoCertificate As Integer
+End Class
+
 ''' <summary>Result of renewing several employees at once.</summary>
 Public Class RenewResult
     Public Property Issued As New List(Of HealthCertificate)
@@ -52,6 +67,8 @@ End Class
 '''   - A certificate is valid hc_validity_months (12) from its issue date.
 '''   - Its status (Valid / Expiring Soon / Expired) is computed by StatusService.
 '''   - Only Health and Admin can add employees or issue certificates; Owners can only view their own business.
+'''   - An employee who leaves is SEPARATED (is_active = 0 + date_separated), never deleted. Separated employees
+'''     are not on the roster, so they are not counted on the cards, the dashboard or in alerts.
 ''' Every change is written to audit_log.
 ''' </summary>
 Public NotInheritable Class HealthCertificateService
@@ -60,6 +77,10 @@ Public NotInheritable Class HealthCertificateService
     End Sub
 
     Public Shared ReadOnly Categories As String() = {"Food Handler", "Non-Food"}
+
+    ' Employment status (from is_active)
+    Public Const EmploymentActive As String = "Active"
+    Public Const EmploymentSeparated As String = "Separated"
 
     Private Const EmployeesTable As String = "employees"
     Private Const CertificatesTable As String = "health_certificates"
@@ -110,6 +131,59 @@ Public NotInheritable Class HealthCertificateService
         Return HealthCertificateRepository.GetByEmployeeId(employee.EmployeeId)
     End Function
 
+    ' ==================== Employees Summary (Revision 4B) ====================
+
+    Public Shared Function GetEmploymentStatus(e As Employee) As String
+        Return If(e.IsActive, EmploymentActive, EmploymentSeparated)
+    End Function
+
+    ''' <summary>
+    ''' Active + separated employees per business the user may see (Owner: their own only), by business name.
+    ''' </summary>
+    Public Shared Function GetEmployeeSummaries() As List(Of BusinessEmployeeSummary)
+        Dim list As New List(Of BusinessEmployeeSummary)
+        For Each b In BusinessRepository.GetAll().Where(Function(x) AccessService.CanSeeBusiness(x.BusinessId))
+            Dim all = EmployeeRepository.GetByBusinessId(b.BusinessId, includeInactive:=True)
+            Dim health = GetSummary(GetRoster(b.BusinessId))
+            list.Add(New BusinessEmployeeSummary With {
+                .Business = b, .Total = all.Count,
+                .Active = all.AsEnumerable().Count(Function(e) e.IsActive),
+                .Separated = all.AsEnumerable().Count(Function(e) Not e.IsActive),
+                .Valid = health.Valid, .ExpiringSoon = health.ExpiringSoon,
+                .Expired = health.Expired, .NoCertificate = health.NoRecord})
+        Next
+        Return list.OrderBy(Function(x) x.Business.BusinessName).ToList()
+    End Function
+
+    ''' <summary>
+    ''' Every employee of a business (active first, then separated, by name) with their latest certificate.
+    ''' For separated employees the certificate is history only.
+    ''' </summary>
+    Public Shared Function GetAllEmployees(businessId As Integer) As List(Of EmployeeHealth)
+        If Not AccessService.CanSeeBusiness(businessId) Then Return New List(Of EmployeeHealth)
+        Return EmployeeRepository.GetByBusinessId(businessId, includeInactive:=True).
+               Select(Function(e) New EmployeeHealth With {
+                   .Employee = e, .Certificate = HealthCertificateRepository.GetByEmployeeId(e.EmployeeId).FirstOrDefault()}).
+               OrderBy(Function(r) If(r.Employee.IsActive, 0, 1)).ThenBy(Function(r) r.Employee.FullName).ToList()
+    End Function
+
+    ''' <summary>"3 yrs 4 mos" of service, up to the separation date (or today). Empty when the hire date is unknown.</summary>
+    Public Shared Function GetLengthOfService(e As Employee, Optional today As Date? = Nothing) As String
+        If Not e.DateHired.HasValue Then Return ""
+        Dim until = If(e.DateSeparated, If(today, Date.Today)).Date
+        Dim hired = e.DateHired.Value.Date
+        Dim months = (until.Year - hired.Year) * 12 + until.Month - hired.Month
+        If until.Day < hired.Day Then months -= 1
+        months = Math.Max(0, months)
+        If months = 0 Then Return "less than a month"
+        Dim years = months \ 12
+        Dim rest = months Mod 12
+        Dim parts As New List(Of String)
+        If years > 0 Then parts.Add(years & If(years = 1, " yr", " yrs"))
+        If rest > 0 Then parts.Add(rest & If(rest = 1, " mo", " mos"))
+        Return String.Join(" ", parts)
+    End Function
+
     ''' <summary>Suggested "Issued by": the doctor on the newest certificate of the business.</summary>
     Public Shared Function GetDefaultIssuer(businessId As Integer) As String
         Dim latest = HealthCertificateRepository.GetLatestByBusinessId(businessId).
@@ -122,7 +196,7 @@ Public NotInheritable Class HealthCertificateService
 
     ''' <summary>
     ''' Checks an employee before saving. Returns field -> message (empty = valid).
-    ''' Keys: "name", "position", "category".
+    ''' Keys: "name", "position", "category", "hired".
     ''' </summary>
     Public Shared Function ValidateEmployee(e As Employee) As Dictionary(Of String, String)
         Dim errors As New Dictionary(Of String, String)
@@ -144,6 +218,13 @@ Public NotInheritable Class HealthCertificateService
             errors("position") = "The position can be at most 100 characters."
         End If
         If Not Categories.Contains(e.Category) Then errors("category") = "Choose Food Handler or Non-Food."
+        If e.DateHired.HasValue Then
+            If e.DateHired.Value.Date > Date.Today Then
+                errors("hired") = "The hire date cannot be in the future."
+            ElseIf e.DateHired.Value.Year < 1950 Then
+                errors("hired") = "Enter a valid hire date."
+            End If
+        End If
         Return errors
     End Function
 
@@ -164,12 +245,42 @@ Public NotInheritable Class HealthCertificateService
         Return True
     End Function
 
-    ''' <summary>Soft delete: the employee leaves the list but the certificate history is kept.</summary>
-    Public Shared Function DeactivateEmployee(e As Employee) As Boolean
-        If Not CanChange(e.BusinessId) OrElse Not e.IsActive Then Return False
-        If Not EmployeeRepository.Deactivate(e.EmployeeId) Then Return False
-        AuditService.LogDelete(EmployeesTable, e.EmployeeId, "Deactivated employee " & e.FullName & " (soft delete)")
-        Return True
+    ''' <summary>Why the employee cannot be separated on this date (Nothing = OK).</summary>
+    Public Shared Function ValidateSeparation(e As Employee, separatedOn As Date) As String
+        If separatedOn.Date > Date.Today Then Return "The separation date cannot be in the future."
+        If e.DateHired.HasValue AndAlso separatedOn.Date < e.DateHired.Value.Date Then
+            Return "The separation date cannot be before the hire date (" & UiHelper.FormatDate(e.DateHired.Value) & ")."
+        End If
+        Return Nothing
+    End Function
+
+    ''' <summary>
+    ''' Soft delete: the employee no longer works there (resigned / ended) as of separatedOn.
+    ''' They leave the roster, but the certificate history is kept. Returns an error or Nothing.
+    ''' </summary>
+    Public Shared Function DeactivateEmployee(e As Employee, separatedOn As Date, Optional reason As String = "") As String
+        If e Is Nothing OrElse Not CanChange(e.BusinessId) Then Return "You are not allowed to change this employee."
+        If Not e.IsActive Then Return e.FullName & " is already separated."
+        Dim problem = ValidateSeparation(e, separatedOn)
+        If problem IsNot Nothing Then Return problem
+        If Not EmployeeRepository.Deactivate(e.EmployeeId, separatedOn) Then Return "The employee could not be saved."
+        AuditService.LogDelete(EmployeesTable, e.EmployeeId, "Separated employee " & e.FullName & " on " &
+                               separatedOn.ToString("yyyy-MM-dd") & If(String.IsNullOrWhiteSpace(reason), "", ": " & reason.Trim()) &
+                               " (soft delete)")
+        Return Nothing
+    End Function
+
+    ''' <summary>Rehires a separated employee (active again, separation date cleared). Returns an error or Nothing.</summary>
+    Public Shared Function ReactivateEmployee(e As Employee) As String
+        If e Is Nothing OrElse Not CanChange(e.BusinessId) Then Return "You are not allowed to change this employee."
+        If e.IsActive Then Return e.FullName & " is already active."
+        If EmployeeRepository.GetByBusinessId(e.BusinessId).Any(
+                Function(x) String.Equals(x.FullName.Trim(), e.FullName.Trim(), StringComparison.OrdinalIgnoreCase)) Then
+            Return "An active employee with the same name is already on the list."
+        End If
+        If Not EmployeeRepository.Reactivate(e.EmployeeId) Then Return "The employee could not be saved."
+        AuditService.LogUpdate(EmployeesTable, e.EmployeeId, "Reactivated employee " & e.FullName & " (rehired)")
+        Return Nothing
     End Function
 
     ' ==================== Certificates ====================

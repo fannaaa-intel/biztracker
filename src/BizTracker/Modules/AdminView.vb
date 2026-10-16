@@ -1,19 +1,21 @@
 ''' <summary>
 ''' Admin tools (sidebar "Settings", Admin only). Same layout as the module screens:
-'''   Toolbar : tabs  Users | Businesses | Settings | Audit Log | Backup  + the open tab's actions
+'''   Toolbar : tabs  Pending | Users | Businesses | Settings | Audit Log | Backup  + the open tab's actions
 '''   Cards   : active users, active businesses, activity today, last backup
-'''   Page    : the open tab (AdminUsersPage, AdminBusinessesPage, AdminSettingsPage, AdminAuditPage, AdminBackupPage)
+'''   Page    : the open tab (AdminQueuePage, AdminUsersPage, AdminBusinessesPage, AdminSettingsPage, AdminAuditPage,
+'''             AdminBackupPage). "Pending" (Revision 4C) opens first: unfinished applications, oldest first.
 ''' Every rule and role check is in the services (UserService, BusinessService, SettingsService,
 ''' AuditLogService, BackupService). No SQL here.
 ''' </summary>
 Public Class AdminView
     Inherits ModuleView
 
-    Public Const UsersTab As Integer = 0
-    Public Const BusinessesTab As Integer = 1
-    Public Const SettingsTab As Integer = 2
-    Public Const AuditTab As Integer = 3
-    Public Const BackupTab As Integer = 4
+    Public Const QueueTab As Integer = 0
+    Public Const UsersTab As Integer = 1
+    Public Const BusinessesTab As Integer = 2
+    Public Const SettingsTab As Integer = 3
+    Public Const AuditTab As Integer = 4
+    Public Const BackupTab As Integer = 5
 
     Private ReadOnly tabs As New SegmentedTabs()
     Private ReadOnly toolbar As ModuleToolbar
@@ -27,6 +29,7 @@ Public Class AdminView
     Private ReadOnly pages As AdminPage()
     Private ReadOnly lblDenied As New Label()
 
+    Public ReadOnly Property QueuePage As AdminQueuePage
     Public ReadOnly Property UsersPage As AdminUsersPage
     Public ReadOnly Property BusinessesPage As AdminBusinessesPage
     Public ReadOnly Property SettingsPage As AdminSettingsPage
@@ -35,22 +38,24 @@ Public Class AdminView
 
     Public Sub New()
         SuspendLayout()
-        tabs.Tabs = {"Users", "Businesses", "Settings", "Audit Log", "Backup"}
-        tabs.SetBounds(0, 3, 400, 40)
-        toolbar = New ModuleToolbar(tabs, 380, 520)
+        tabs.Tabs = {"Pending", "Users", "Businesses", "Settings", "Audit Log", "Backup"}
+        tabs.SetBounds(0, 3, 480, 40)
+        toolbar = New ModuleToolbar(tabs, 460, 620)
 
+        QueuePage = New AdminQueuePage(toolbar)
         UsersPage = New AdminUsersPage(toolbar)
         BusinessesPage = New AdminBusinessesPage(toolbar)
         SettingsPage = New AdminSettingsPage(toolbar)
         AuditPage = New AdminAuditPage(toolbar)
         BackupPage = New AdminBackupPage(toolbar)
-        pages = {CType(UsersPage, AdminPage), BusinessesPage, SettingsPage, AuditPage, BackupPage}
+        pages = {CType(QueuePage, AdminPage), UsersPage, BusinessesPage, SettingsPage, AuditPage, BackupPage}
         For Each p In pages
             p.Visible = False
             AddHandler p.DataChanged, Sub() UpdateCards()
             pageHost.Controls.Add(p)
         Next
         AddHandler BusinessesPage.OpenUserRequested, Sub(id) OpenUser(id)
+        AddHandler QueuePage.OpenRequested, Sub(screen, businessId) RequestNavigate(screen, businessId)
         AddHandler tabs.SelectedIndexChanged, Sub() ShowTab()
 
         pageHost.Dock = DockStyle.Fill
@@ -74,7 +79,7 @@ Public Class AdminView
 
     Public Overrides ReadOnly Property Subtitle As String
         Get
-            Return "Users, business registry, settings, audit log and backup"
+            Return "Pending applications, users, business registry, settings, audit log and backup"
         End Get
     End Property
 

@@ -11,6 +11,8 @@ Public Class EmployeeDialog
     Private ReadOnly txtName As New TextBox()
     Private ReadOnly txtPosition As New TextBox()
     Private ReadOnly cboCategory As New ComboBox()
+    Private ReadOnly dtpHired As New DateTimePicker()
+    Private ReadOnly errHired As Label
     Private ReadOnly errName As Label
     Private ReadOnly errPosition As Label
     Private ReadOnly errCategory As Label
@@ -27,7 +29,7 @@ Public Class EmployeeDialog
     Public Sub New(business As Business, Optional existing As Employee = Nothing, Optional currentStatus As String = "")
         isNew = existing Is Nothing
         employee = If(existing, New Employee With {.BusinessId = business.BusinessId, .Category = "Food Handler"})
-        ClientSize = New Size(560, 430)
+        ClientSize = New Size(560, 508)
         If isNew Then
             SetTitle("Add Employee", "Add a staff member of " & business.BusinessName)
         Else
@@ -70,7 +72,25 @@ Public Class EmployeeDialog
             .Text = "Food Handlers prepare or serve food. Everyone else (cashier, guard, driver...) is Non-Food.",
             .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted, .AutoSize = False, .AutoEllipsis = True
         }
-        note.SetBounds(24, 254, 512, 20)
+        ' Date hired: optional (the check box inside the picker says whether it is given)
+        dtpHired.Format = DateTimePickerFormat.Custom
+        dtpHired.CustomFormat = "MMM dd, yyyy"
+        dtpHired.ShowCheckBox = True
+        dtpHired.MaxDate = Date.Today
+        dtpHired.Font = Theme.InputFont
+        dtpHired.Height = 32
+        dtpHired.Value = If(employee.DateHired, Date.Today)
+        dtpHired.Checked = employee.DateHired.HasValue
+        errHired = AddField("Date hired (optional)", dtpHired, 24, 254, 246)
+        Dim service As New Label With {
+            .Font = Theme.SmallFont, .ForeColor = Theme.TextMuted, .AutoSize = False, .AutoEllipsis = True,
+            .Text = If(employee.DateHired.HasValue, "Length of service: " & HealthCertificateService.GetLengthOfService(employee),
+                       "Tick the box to record when the employee started.")
+        }
+        service.SetBounds(290, 282, 246, 24)
+        Body.Controls.Add(service)
+
+        note.SetBounds(24, 332, 512, 20)
         Tips.SetToolTip(note, note.Text)
         Body.Controls.Add(note)
 
@@ -86,22 +106,26 @@ Public Class EmployeeDialog
         AddHandler txtName.TextChanged, Sub() errName.Text = ""
         AddHandler txtPosition.TextChanged, Sub() errPosition.Text = ""
         AddHandler cboCategory.SelectedIndexChanged, Sub() errCategory.Text = ""
+        AddHandler dtpHired.ValueChanged, Sub() errHired.Text = ""
     End Sub
 
     Private Sub Save_Click(sender As Object, e As EventArgs)
-        errName.Text = "" : errPosition.Text = "" : errCategory.Text = ""
+        errName.Text = "" : errPosition.Text = "" : errCategory.Text = "" : errHired.Text = ""
 
         ' Work on a copy so a failed save does not change the caller's object
         Dim candidate As New Employee With {
             .EmployeeId = employee.EmployeeId, .BusinessId = employee.BusinessId, .IsActive = employee.IsActive,
             .FullName = txtName.Text.Trim(), .Position = txtPosition.Text.Trim(),
-            .Category = If(cboCategory.SelectedItem?.ToString(), "")
+            .Category = If(cboCategory.SelectedItem?.ToString(), ""),
+            .DateHired = If(dtpHired.Checked, dtpHired.Value.Date, CType(Nothing, Date?)),
+            .DateSeparated = employee.DateSeparated
         }
         Dim errors = HealthCertificateService.ValidateEmployee(candidate)
         If errors.Count > 0 Then
             If errors.ContainsKey("name") Then errName.Text = errors("name")
             If errors.ContainsKey("position") Then errPosition.Text = errors("position")
             If errors.ContainsKey("category") Then errCategory.Text = errors("category")
+            If errors.ContainsKey("hired") Then errHired.Text = errors("hired")
             If errors.ContainsKey("name") Then txtName.Focus() Else If errors.ContainsKey("position") Then txtPosition.Focus()
             Return
         End If

@@ -62,6 +62,17 @@ Public NotInheritable Class SettingsService
                               .MinValue = 1, .MaxValue = 60, .Unit = "months", .Hint = "Months a health certificate stays valid (1-60)."},
         New SettingInfo With {.Key = "sp_passing_score", .Label = "Sanitary passing score", .Kind = SettingKind.WholeNumber,
                               .MinValue = 0, .MaxValue = 100, .Unit = "/ 100", .Hint = "Minimum inspection score to issue a sanitary permit (0-100)."},
+        New SettingInfo With {.Key = "arta_simple_days", .Label = "Processing time: simple", .Kind = SettingKind.WholeNumber,
+                              .MinValue = 1, .MaxValue = 60, .Unit = "working days",
+                              .Hint = "RA 11032 limit for simple transactions, e.g. business permit renewal (default 3)."},
+        New SettingInfo With {.Key = "arta_complex_days", .Label = "Processing time: complex", .Kind = SettingKind.WholeNumber,
+                              .MinValue = 1, .MaxValue = 60, .Unit = "working days",
+                              .Hint = "RA 11032 limit for complex transactions: new business permit, sanitary permit, inspection (default 7)."},
+        New SettingInfo With {.Key = "arta_technical_days", .Label = "Processing time: highly technical", .Kind = SettingKind.WholeNumber,
+                              .MinValue = 1, .MaxValue = 90, .Unit = "working days",
+                              .Hint = "RA 11032 limit for highly technical transactions, e.g. construction permits (default 20)."},
+        New SettingInfo With {.Key = "terms_version", .Label = "Terms and Conditions version", .Kind = SettingKind.Text,
+                              .Hint = "Change it (e.g. 1.0 to 1.1) after editing Templates/terms.html: every user must accept again on the next login."},
         New SettingInfo With {.Key = "upload_folder", .Label = "Upload folder", .Kind = SettingKind.Folder,
                               .Hint = "Folder for uploaded requirement files, relative to the app (e.g. uploads)."}
     }
@@ -129,6 +140,7 @@ Public NotInheritable Class SettingsService
         normalized = text
         If text = "" Then Return "Enter a value."
         If text.Length > 255 Then Return "At most 255 characters."
+        If key = "terms_version" AndAlso text.Length > 20 Then Return "At most 20 characters (stored with each user's acceptance)."
 
         Select Case info.Kind
             Case SettingKind.WholeNumber

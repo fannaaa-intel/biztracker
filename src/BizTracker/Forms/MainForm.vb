@@ -46,6 +46,8 @@ Public Class MainForm
     Private ReadOnly lblTitle As New Label()
     Private ReadOnly lblSubtitle As New Label()
     Private ReadOnly btnBell As New IconButton()
+    Private ReadOnly btnPolicies As New Button()        ' Revision 4D: shown on the six service screens
+    Private currentScreen As AppScreen
     Private ReadOnly avatar As New Avatar()
     Private ReadOnly lblUserName As New Label()
     Private ReadOnly lblUserRole As New Label()
@@ -277,7 +279,22 @@ Public Class MainForm
         tips.SetToolTip(btnBell, "Notifications")
         AddHandler btnBell.Click, AddressOf BtnBell_Click
 
-        right.Controls.AddRange({btnLogout, divider, userBox, btnBell})
+        ' "Policies & Requirements" of the open service (hidden on Dashboard, Permit Vault and Settings)
+        btnPolicies.Text = "Policies & Requirements"
+        btnPolicies.Height = 38
+        btnPolicies.Margin = New Padding(0, 19, 14, 0)
+        UiHelper.StyleSecondaryButton(btnPolicies)
+        btnPolicies.UseMnemonic = False      ' show the "&"
+        btnPolicies.Width = TextRenderer.MeasureText(btnPolicies.Text, btnPolicies.Font, Size.Empty, TextFormatFlags.NoPrefix).Width + 32
+        btnPolicies.Visible = False
+        tips.SetToolTip(btnPolicies, "Legal basis, requirements, validity, deadlines and penalties of this service")
+        AddHandler btnPolicies.Click, Sub()
+                                          Using dlg As New PoliciesDialog(currentScreen)
+                                              dlg.ShowDialog(Me)
+                                          End Using
+                                      End Sub
+
+        right.Controls.AddRange({btnLogout, divider, userBox, btnBell, btnPolicies})
         topBar.Controls.AddRange({lblTitle, lblSubtitle, right})
         AddHandler topBar.Layout, Sub() lblSubtitle.Width = Math.Max(0, right.Left - lblSubtitle.Left - Dpi(16))
     End Sub
@@ -328,6 +345,8 @@ Public Class MainForm
         contentPanel.ResumeLayout()
         ModuleView.SetPendingBusiness(Nothing)     ' the new page has used it (or did not need it)
 
+        currentScreen = screen
+        btnPolicies.Visible = PolicyService.HasPolicy(screen)
         lblTitle.Text = item.Title
         lblSubtitle.Text = If(currentView.Subtitle <> "", currentView.Subtitle,
                               Date.Today.ToString("dddd, MMMM d, yyyy"))

@@ -1,0 +1,58 @@
+  <div class="office">Business Permits and Licensing Office (BPLO) &middot; Mayor's Permit to operate a business</div>
+
+  <h2>Legal basis</h2>
+  <span class="law">RA 7160 &ndash; Local Government Code</span>
+  <span class="law">RA 11032 &ndash; Ease of Doing Business Act</span>
+  <span class="law">Municipal Revenue Code</span>
+  <ul>
+    <li>Every business operating in the municipality needs a Mayor's Permit and pays the local business tax (RA 7160, Sec. 143 and 444).</li>
+    <li>Applications are filed once at the Business One-Stop Shop and processed within the RA 11032 time limits:
+        renewal (simple) <b>{{arta_simple_days}} working days</b>, new business (complex) <b>{{arta_complex_days}} working days</b>.</li>
+  </ul>
+
+  <h2>Documentary requirements</h2>
+  <table>
+    <tr><th>New business</th><th>Renewal</th></tr>
+    <tr>
+      <td><ul>
+        <li>DTI / SEC / CDA registration</li>
+        <li>Barangay Business Clearance</li>
+        <li>Lease contract or land title</li>
+        <li>Occupancy Permit</li>
+        <li>Fire Safety Inspection Certificate (FSIC)</li>
+      </ul></td>
+      <td><ul>
+        <li>DTI / SEC / CDA registration</li>
+        <li>Sworn declaration of last year's gross receipts</li>
+        <li>Lease contract</li>
+        <li>Occupancy Permit</li>
+        <li>Fire Safety Inspection Certificate (FSIC)</li>
+      </ul></td>
+    </tr>
+  </table>
+  <p>Clearances endorsed to the BPLO before the permit is issued: Barangay, Sanitary (Municipal Health Office),
+     Real Property Tax (Treasurer), Fire (BFP) and Zoning (MPDO).</p>
+
+  <h2>Process</h2>
+  <ol>
+    <li>Submitted &rarr; Under Review (documents checked) &rarr; For Assessment</li>
+    <li>Assessed: the business tax is computed from the gross receipts (renewal) or capital investment (new).</li>
+    <li>Paid: the tax is paid at the Treasurer's Office (partial payments are accepted).</li>
+    <li>Issued: the Mayor's Permit is released only when the tax and any charges are <b>fully paid</b>.</li>
+  </ol>
+
+  <h2>Validity and renewal</h2>
+  <table>
+    <tr><td class="k">Validity</td><td>Calendar year: the permit expires on <b>December 31</b> of the year it covers.</td></tr>
+    <tr><td class="k">Renewal deadline</td><td>On or before <b>{{bp_renewal_deadline|monthday}}</b> of each year (RA 7160, Sec. 165).</td></tr>
+    <tr><td class="k">Expiry warning</td><td>BizTracker warns <b>{{expiry_warning_days}} days</b> before the permit expires.</td></tr>
+  </table>
+
+  <h2>Late renewal charges (RA 7160, Sec. 168)</h2>
+  <table>
+    <tr><td class="k">Surcharge</td><td><b>{{bp_surcharge_rate|pct}}</b> of the tax still unpaid on the deadline, charged once.</td></tr>
+    <tr><td class="k">Interest</td><td><b>{{bp_interest_rate_monthly|pct}} per month</b> (a part of a month counts as a month) on the unpaid tax
+        plus surcharge, not compounded, for at most <b>{{bp_interest_max_months}} months</b>.</td></tr>
+    <tr><td class="k">Order of payment</td><td>Each payment pays the interest first, then the surcharge, then the tax.</td></tr>
+  </table>
+  <p class="warn">Operating without a valid Mayor's Permit may lead to closure of the business.</p>

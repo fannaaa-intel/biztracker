@@ -299,6 +299,20 @@ Public Class LoginForm
         btnLogin.Enabled = True
 
         If result.Success Then
+            ' Revision 4E: the current Terms and Conditions must be accepted once (again after a new version)
+            If TermsService.NeedsAcceptance(result.User) Then
+                Dim accepted As Boolean
+                Using dlg As New TermsDialog(result.User.FullName)
+                    accepted = dlg.ShowDialog(Me) = DialogResult.OK
+                End Using
+                If Not accepted Then
+                    TermsService.Decline()            ' logs out
+                    txtPassword.Clear()
+                    ShowError("You must accept the Terms and Conditions to use BizTracker.")
+                    txtPassword.Focus()
+                    Return
+                End If
+            End If
             DialogResult = DialogResult.OK
             Close()
             Return

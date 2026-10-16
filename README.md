@@ -28,7 +28,7 @@ Built with VB.NET, Windows Forms (.NET 8) and MySQL (MariaDB via XAMPP).
 | `assessor` | Assessor |
 | `building` | Building |
 | `inspector` | Inspector |
-| `owner` | Owner of Cristan's Bakeshop |
+| `owner` | Owner of Cristan's Bakeshop (shows the Terms and Conditions on its first login) |
 
 **Database (XAMPP MySQL)**
 

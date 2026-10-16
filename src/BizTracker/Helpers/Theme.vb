@@ -105,7 +105,7 @@ Public NotInheritable Class Theme
     Private Shared Function StatusGroup(status As String) As Integer
         Select Case If(status, "").Trim().ToLowerInvariant()
             Case "valid", "approved", "paid", "issued", "endorsed", "passed", "verified", "completed", "active", "ready",
-                 "on schedule"
+                 "on schedule", "on time"
                 Return 1
             Case "pending", "expiring soon", "submitted", "under review", "for assessment",
                  "assessed", "scheduled", "in progress", "pending upload", "due soon",

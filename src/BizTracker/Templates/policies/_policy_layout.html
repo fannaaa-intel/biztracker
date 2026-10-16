@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<!-- Shared page for the "Policies & Requirements" of each service. PolicyService puts the module's file in
+     {{content}} and fills every {{setting}} / {{setting|pct}} / {{setting|monthday}} from the settings table. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="X-UA-Compatible" content="IE=edge">
+<title>{{title}} - Policies &amp; Requirements</title>
+<style>
+  body { margin: 0; background: #ffffff; font-family: "Segoe UI", Arial, sans-serif; color: #1f2937; font-size: 14px; line-height: 1.5; }
+  .page { max-width: 820px; margin: 0 auto; padding: 18px 26px 26px; }
+  .lgu { color: #6b7280; font-size: 12px; text-transform: uppercase; letter-spacing: .5px; }
+  h1 { font-size: 22px; color: #0B6E99; margin: 2px 0 2px; }
+  .office { font-size: 13px; color: #4b5563; margin-bottom: 14px; }
+  h2 { font-size: 15px; color: #0B6E99; margin: 18px 0 6px; padding-bottom: 4px; border-bottom: 1px solid #e5e7eb; }
+  ul, ol { margin: 4px 0 6px 0; padding-left: 22px; }
+  li { margin: 3px 0; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0 4px; }
+  th { background: #e1f1f8; color: #0B6E99; text-align: left; padding: 6px 8px; font-size: 12px; text-transform: uppercase; }
+  td { padding: 6px 8px; border-bottom: 1px solid #e5e7eb; vertical-align: top; }
+  td.k { width: 36%; color: #4b5563; }
+  .law { display: inline-block; background: #eef6fa; color: #0B6E99; border-radius: 10px; padding: 1px 8px; font-size: 12px; font-weight: 600; margin: 2px 4px 2px 0; }
+  .note { margin-top: 20px; padding: 10px 12px; background: #f3f7fa; border-radius: 8px; font-size: 12px; color: #4b5563; }
+  .warn { color: #b45309; font-weight: 600; }
+  @media print { .page { padding: 0; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="lgu">{{lgu_name}}, {{province}}</div>
+  <h1>{{title}} &mdash; Policies &amp; Requirements</h1>
+{{content}}
+  <div class="note">
+    This is a summary for guidance. The rates and periods shown are the ones set in BizTracker (Settings) and are the
+    amounts the system computes. The official text of the laws, their implementing rules and the Municipal Revenue Code prevail.
+  </div>
+</div>
+</body>
+</html>

@@ -10,6 +10,9 @@ Public Class User
     Public Property IsActive As Boolean = True
     Public Property LastLogin As Date?
     Public Property CreatedAt As Date
+    ' Terms and Conditions (Revision 4E): the version the user accepted, and when ("" / Nothing = never)
+    Public Property TermsAcceptedVersion As String = ""
+    Public Property TermsAcceptedAt As Date?
 
     ' Display only (filled from a JOIN, not saved)
     Public Property BusinessName As String = ""

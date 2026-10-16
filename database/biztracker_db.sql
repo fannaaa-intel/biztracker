@@ -54,6 +54,8 @@ CREATE TABLE users (
   is_active      TINYINT(1) NOT NULL DEFAULT 1,
   last_login     DATETIME NULL,
   created_at     DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  terms_accepted_version VARCHAR(20) NULL,       -- Revision 4E: must equal settings.terms_version to skip the Terms screen
+  terms_accepted_at      DATETIME NULL,
   INDEX idx_users_business (business_id),
   CONSTRAINT fk_users_business FOREIGN KEY (business_id)
     REFERENCES businesses(business_id) ON DELETE RESTRICT ON UPDATE CASCADE
@@ -198,9 +200,12 @@ CREATE TABLE employees (
   full_name    VARCHAR(150) NOT NULL,
   position     VARCHAR(100) NOT NULL,
   category     ENUM('Food Handler','Non-Food') NOT NULL,
-  is_active    TINYINT(1) NOT NULL DEFAULT 1,
+  is_active    TINYINT(1) NOT NULL DEFAULT 1,     -- 0 = separated (resigned / ended); never deleted
   created_at   DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  date_hired     DATE NULL,                       -- Revision 4B
+  date_separated DATE NULL,                       -- set when deactivated, cleared when reactivated
   INDEX idx_emp_business (business_id),
+  CONSTRAINT chk_emp_dates CHECK (date_hired IS NULL OR date_separated IS NULL OR date_separated >= date_hired),
   CONSTRAINT fk_emp_business FOREIGN KEY (business_id)
     REFERENCES businesses(business_id) ON DELETE RESTRICT ON UPDATE CASCADE
 ) ENGINE=InnoDB;
@@ -421,6 +426,10 @@ INSERT INTO settings (setting_key, setting_value, description) VALUES
 ('rpt_penalty_max',          '0.72',  'RPT max penalty (36 months)'),
 ('hc_validity_months',       '12',    'Health certificate validity in months'),
 ('sp_passing_score',         '75',    'Minimum sanitary inspection score (0-100) to issue a sanitary permit'),
+('arta_simple_days',         '3',     'RA 11032 processing time, simple transactions (working days)'),
+('arta_complex_days',        '7',     'RA 11032 processing time, complex transactions (working days)'),
+('arta_technical_days',      '20',    'RA 11032 processing time, highly technical transactions (working days)'),
+('terms_version',            '1.0',   'Version of the Terms and Conditions; change it to make every user accept again'),
 ('upload_folder',            'uploads', 'Folder for uploaded requirement files');
 
 -- ---------- Businesses ----------
@@ -439,6 +448,10 @@ INSERT INTO users (user_id, username, password_hash, full_name, email, role, bus
 (5, 'building',  @HASH, 'Engr. Teresa Castillo',    'building@example.com',  'Building',  NULL),
 (6, 'inspector', @HASH, 'Insp. Mark Del Rosario',   'inspector@example.com', 'Inspector', NULL),
 (7, 'owner',     @HASH, 'Cristan Dela Cruz',        NULL,                    'Owner',     1);
+
+-- Terms and Conditions: every staff account already accepted v1.0 (demos are not interrupted);
+-- the owner account has not, so the Terms screen shows on its first login.
+UPDATE users SET terms_accepted_version = '1.0', terms_accepted_at = CURDATE() - INTERVAL 30 DAY WHERE role <> 'Owner';
 
 -- Owner accounts use their business e-mail, but only when no other account has it
 -- (users.email is UNIQUE; co-owners or one owner of several businesses may share an e-mail).
@@ -548,25 +561,29 @@ INSERT INTO sanitary_permits (sanitary_id, business_id, permit_no, permit_year, 
    'Clean premises; proper waste segregation.',
    @JAN1 + INTERVAL 4 DAY, @JAN1 + INTERVAL 14 DAY, MAKEDATE(@Y, 1) + INTERVAL 1 YEAR - INTERVAL 1 DAY),
 (3, 3, CONCAT('SP-', @Y, '-00003'), @Y, 'Food', 'For Inspection', NULL, NULL, NULL, NULL,
-   CURDATE() - INTERVAL 10 DAY, NULL, NULL);
+   CURDATE() - INTERVAL 14 DAY, NULL, NULL);
 
 -- ---------- Employees ----------
-INSERT INTO employees (employee_id, business_id, full_name, position, category) VALUES
-(1,  1, 'Aira Agbanglo',        'Baker',            'Food Handler'),
-(2,  1, 'Christopher Sadi',     'Cashier',          'Non-Food'),
-(3,  1, 'Lilah Espergal',       'Packer',           'Food Handler'),
-(4,  1, 'Juan Pascual',         'Delivery Driver',  'Non-Food'),
-(5,  1, 'Ben Reyes',            'Security Guard',   'Non-Food'),
-(6,  1, 'Jasmine Tolentino',    'Pastry Chef',      'Food Handler'),
-(7,  1, 'Mark Anthony Galang',  'Baker Assistant',  'Food Handler'),
-(8,  1, 'Grace Bautista',       'Service Crew',     'Food Handler'),
-(9,  1, 'Rico Manalo',          'Utility Staff',    'Non-Food'),
-(10, 1, 'Elena Soriano',        'Store Supervisor', 'Non-Food'),
-(11, 2, 'Joy Cabrera',          'Sales Clerk',      'Non-Food'),
-(12, 2, 'Arnel Santos',         'Stockman',         'Non-Food'),
-(13, 3, 'Rosa Mendoza',         'Head Cook',        'Food Handler'),
-(14, 3, 'Danica Flores',        'Server',           'Food Handler'),
-(15, 3, 'Noel Ramos',           'Dishwasher',       'Food Handler');
+-- 15 active employees + 2 separated ones (16, 17). Separated employees are not counted anywhere
+-- (cards, dashboard, alerts); they only show in the Employees Summary.
+INSERT INTO employees (employee_id, business_id, full_name, position, category, is_active, date_hired, date_separated) VALUES
+(1,  1, 'Aira Agbanglo',        'Baker',            'Food Handler', 1, CURDATE() - INTERVAL 40 MONTH, NULL),
+(2,  1, 'Christopher Sadi',     'Cashier',          'Non-Food',     1, CURDATE() - INTERVAL 30 MONTH, NULL),
+(3,  1, 'Lilah Espergal',       'Packer',           'Food Handler', 1, CURDATE() - INTERVAL 26 MONTH, NULL),
+(4,  1, 'Juan Pascual',         'Delivery Driver',  'Non-Food',     1, CURDATE() - INTERVAL 22 MONTH, NULL),
+(5,  1, 'Ben Reyes',            'Security Guard',   'Non-Food',     1, CURDATE() - INTERVAL 20 MONTH, NULL),
+(6,  1, 'Jasmine Tolentino',    'Pastry Chef',      'Food Handler', 1, CURDATE() - INTERVAL 48 MONTH, NULL),
+(7,  1, 'Mark Anthony Galang',  'Baker Assistant',  'Food Handler', 1, CURDATE() - INTERVAL 18 MONTH, NULL),
+(8,  1, 'Grace Bautista',       'Service Crew',     'Food Handler', 1, CURDATE() - INTERVAL 14 MONTH, NULL),
+(9,  1, 'Rico Manalo',          'Utility Staff',    'Non-Food',     1, CURDATE() - INTERVAL 36 MONTH, NULL),
+(10, 1, 'Elena Soriano',        'Store Supervisor', 'Non-Food',     1, CURDATE() - INTERVAL 60 MONTH, NULL),
+(11, 2, 'Joy Cabrera',          'Sales Clerk',      'Non-Food',     1, CURDATE() - INTERVAL 28 MONTH, NULL),
+(12, 2, 'Arnel Santos',         'Stockman',         'Non-Food',     1, CURDATE() - INTERVAL 16 MONTH, NULL),
+(13, 3, 'Rosa Mendoza',         'Head Cook',        'Food Handler', 1, CURDATE() - INTERVAL 72 MONTH, NULL),
+(14, 3, 'Danica Flores',        'Server',           'Food Handler', 1, CURDATE() - INTERVAL 24 MONTH, NULL),
+(15, 3, 'Noel Ramos',           'Dishwasher',       'Food Handler', 1, CURDATE() - INTERVAL 19 MONTH, NULL),
+(16, 1, 'Paolo Lim',            'Baker',            'Food Handler', 0, CURDATE() - INTERVAL 30 MONTH, CURDATE() - INTERVAL 75 DAY),
+(17, 3, 'Carla Dizon',          'Server',           'Food Handler', 0, CURDATE() - INTERVAL 17 MONTH, CURDATE() - INTERVAL 20 DAY);
 
 -- ---------- Health Certificates ----------
 -- Bakeshop: 8 valid, 1 expiring in 20 days (Ben Reyes), 1 expired 5 days ago (Lilah Espergal)
@@ -587,7 +604,11 @@ INSERT INTO health_certificates (employee_id, certificate_no, issue_date, expiry
 -- Restaurant: 2 valid, 1 expired 40 days ago
 (13, CONCAT('HC-', @Y, '-00011'), CURDATE() - INTERVAL 45 DAY,  CURDATE() - INTERVAL 45 DAY + INTERVAL 1 YEAR,  'Dr. Paolo Agustin'),
 (14, CONCAT('HC-', @Y, '-00012'), CURDATE() - INTERVAL 45 DAY,  CURDATE() - INTERVAL 45 DAY + INTERVAL 1 YEAR,  'Dr. Paolo Agustin'),
-(15, CONCAT('HC-', @Y-1, '-00040'), CURDATE() - INTERVAL 40 DAY - INTERVAL 1 YEAR, CURDATE() - INTERVAL 40 DAY, 'Dr. Paolo Agustin');
+(15, CONCAT('HC-', @Y-1, '-00040'), CURDATE() - INTERVAL 40 DAY - INTERVAL 1 YEAR, CURDATE() - INTERVAL 40 DAY, 'Dr. Paolo Agustin'),
+-- Separated employees keep their history: Paolo's certificate has expired and Carla's expires in 25 days,
+-- but neither raises an alert or counts on the cards because they no longer work there.
+(16, CONCAT('HC-', @Y-1, '-00041'), CURDATE() - INTERVAL 35 DAY - INTERVAL 1 YEAR, CURDATE() - INTERVAL 35 DAY, 'Dr. Paolo Agustin'),
+(17, CONCAT('HC-', @Y-1, '-00042'), CURDATE() + INTERVAL 25 DAY - INTERVAL 1 YEAR, CURDATE() + INTERVAL 25 DAY, 'Dr. Paolo Agustin');
 
 -- ---------- Properties ----------
 INSERT INTO properties (property_id, business_id, pin, td_no, location, property_type, classification, assessed_value) VALUES
@@ -651,10 +672,11 @@ ORDER BY payment_date, or_no;
 
 -- ---------- Annual Inspection ----------
 -- Bakeshop: inspected 10 days ago, Fire failed (exit door), re-inspection in 30 days
-INSERT INTO inspections (inspection_id, business_id, reference_no, inspection_year, schedule_date, reinspection_date, status, overall_result) VALUES
-(1, 1, CONCAT('INS-', @Y, '-00001'), @Y, TIMESTAMP(CURDATE() - INTERVAL 10 DAY, '09:30:00'), TIMESTAMP(CURDATE() + INTERVAL 30 DAY, '09:00:00'), 'For Re-inspection', 'Pending'),
-(2, 2, CONCAT('INS-', @Y, '-00002'), @Y, TIMESTAMP(@JAN1 + INTERVAL 60 DAY, '10:00:00'), NULL, 'Completed', 'Passed'),
-(3, 3, CONCAT('INS-', @Y, '-00003'), @Y, TIMESTAMP(CURDATE() + INTERVAL 14 DAY, '13:30:00'), NULL, 'Scheduled', 'Pending');
+-- created_at = when the inspection was filed (the Admin Pending Applications queue counts days from it)
+INSERT INTO inspections (inspection_id, business_id, reference_no, inspection_year, schedule_date, reinspection_date, status, overall_result, created_at) VALUES
+(1, 1, CONCAT('INS-', @Y, '-00001'), @Y, TIMESTAMP(CURDATE() - INTERVAL 10 DAY, '09:30:00'), TIMESTAMP(CURDATE() + INTERVAL 30 DAY, '09:00:00'), 'For Re-inspection', 'Pending', TIMESTAMP(CURDATE() - INTERVAL 40 DAY, '08:15:00')),
+(2, 2, CONCAT('INS-', @Y, '-00002'), @Y, TIMESTAMP(@JAN1 + INTERVAL 60 DAY, '10:00:00'), NULL, 'Completed', 'Passed', TIMESTAMP(@JAN1 + INTERVAL 30 DAY, '08:15:00')),
+(3, 3, CONCAT('INS-', @Y, '-00003'), @Y, TIMESTAMP(CURDATE() + INTERVAL 14 DAY, '13:30:00'), NULL, 'Scheduled', 'Pending', TIMESTAMP(CURDATE() - INTERVAL 3 DAY, '08:15:00'));
 
 UPDATE inspections SET certificate_no = CONCAT('AIC-', @Y, '-00002') WHERE inspection_id = 2;
 

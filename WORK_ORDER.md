@@ -267,6 +267,7 @@ Use Case diagram (all roles), ERD (new — export from phpMyAdmin Designer), and
 ## Revision 4 — Panel feedback (Oct 2026)
 Done: Revision 1 (Forgot Password), 2A (RPT payments), 2B (business tax payments). Revision 3 (Treasurer role) is still planned.
 Each item below is its own revision: do ONE, build, test, commit, `/clear`, then the next.
+Status (Oct 17, 2026): 4A-4E all done (4A committed; 4B-4E built and tested, waiting for a manual check).
 Every revision that changes the schema must: update `database/biztracker_db.sql` (tables + seed data that keeps ONE
 consistent story), add a re-runnable script in `database/migrations/` (`ADD COLUMN IF NOT EXISTS`, keeps data),
 extend `tests/migrations/run_migration_test.sh`, and update the "Database tables" section of CLAUDE.md.

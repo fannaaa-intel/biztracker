@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # =====================================================================
-#  Migration regression test (Revisions 1, 2A, 2B, 4A)
+#  Migration regression test (Revisions 1, 2A, 2B, 4A-4C, 4E)
 #
 #  What it checks:
 #    1. The database as it was BEFORE Revision 1 (biztracker_db.sql from git, commit 5a97a84^)
@@ -25,7 +25,8 @@ OLD_DB=biztracker_migtest_old
 NEW_DB=biztracker_migtest_new
 BEFORE_REVISION_1=5a97a84^          # last commit before the Forgot Password revision
 MIGRATIONS=(2026-10-15_forgot_password 2026-10-15_rpt_partial_payments 2026-10-15_bp_payments
-            2026-10-16_construction_schedule)
+            2026-10-16_construction_schedule 2026-10-16_employee_dates 2026-10-16_processing_times
+            2026-10-17_terms_acceptance)
 
 cd "$(git rev-parse --show-toplevel)" || exit 1
 WORK=$(mktemp -d)

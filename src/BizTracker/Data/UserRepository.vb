@@ -96,6 +96,12 @@ Public NotInheritable Class UserRepository
                                   Db.P("@id", userId)) > 0
     End Function
 
+    ''' <summary>Records that the user accepted this version of the Terms and Conditions (now).</summary>
+    Public Shared Function SetTermsAccepted(userId As Integer, version As String) As Boolean
+        Return Db.ExecuteNonQuery("UPDATE users SET terms_accepted_version = @v, terms_accepted_at = NOW() WHERE user_id = @id",
+                                  Db.P("@v", version), Db.P("@id", userId)) > 0
+    End Function
+
     ' ---------------- helpers ----------------
 
     Private Shared Function ToList(table As DataTable) As List(Of User)
@@ -114,7 +120,9 @@ Public NotInheritable Class UserRepository
             .IsActive = row.GetBool("is_active"),
             .LastLogin = row.GetNullableDate("last_login"),
             .BusinessName = row.GetString("business_name"),
-            .CreatedAt = row.GetDate("created_at")
+            .CreatedAt = row.GetDate("created_at"),
+            .TermsAcceptedVersion = row.GetString("terms_accepted_version"),
+            .TermsAcceptedAt = row.GetNullableDate("terms_accepted_at")
         }
     End Function
 

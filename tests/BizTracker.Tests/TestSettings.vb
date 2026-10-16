@@ -16,7 +16,10 @@ Public Module TestSettings
             {"rpt_sef_rate", "0.01"},
             {"rpt_penalty_rate_monthly", "0.02"},
             {"rpt_penalty_max", "0.72"},
-            {"expiry_warning_days", "30"}
+            {"expiry_warning_days", "30"},
+            {"arta_simple_days", "3"},
+            {"arta_complex_days", "7"},
+            {"arta_technical_days", "20"}
         }
         GetType(SettingsRepository).GetField("_cache", BindingFlags.NonPublic Or BindingFlags.Static).SetValue(Nothing, rates)
     End Sub

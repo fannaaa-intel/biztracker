@@ -65,7 +65,7 @@ BizTracker/
 ## Roles and access
 | Role | Can access |
 |---|---|
-| Admin | Everything + User Management + Settings + Audit Log |
+| Admin | Everything + Pending Applications queue + User Management + Settings + Audit Log |
 | BPLO | Businesses, Business Permits, Dashboard, Reports, Permit Vault |
 | Health | Sanitary Permits, Health Certificates |
 | Assessor | Real Property Tax |
@@ -94,7 +94,9 @@ Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FK
 - `users` (user_id PK, username UNIQUE, password_hash (BCrypt), full_name,
   email VARCHAR(150) NULL UNIQUE (stored trimmed + lower case; needed for Forgot Password),
   role ENUM('Admin','BPLO','Health','Assessor','Building','Inspector','Owner'),
-  business_id NULL FK→businesses (Owner accounts only), is_active default 1, last_login DATETIME NULL, created_at)
+  business_id NULL FK→businesses (Owner accounts only), is_active default 1, last_login DATETIME NULL, created_at,
+  terms_accepted_version VARCHAR(20) NULL, terms_accepted_at DATETIME NULL) — after login `TermsService` shows the
+  Terms (Templates/terms.html, incl. RA 10173 consent) when terms_accepted_version <> settings.terms_version; Decline = logout
 - `password_resets` (reset_id PK, user_id FK→users, code_hash (BCrypt of the 6-digit code), expires_at DATETIME,
   attempts TINYINT UNSIGNED default 0, created_at, used_at DATETIME NULL (set when used OR invalidated))
   — Forgot Password codes: valid 10 minutes, single use, cancelled after 5 wrong attempts, 60 s resend cooldown
@@ -125,7 +127,9 @@ Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FK
   inspection_score TINYINT UNSIGNED NULL (0-100, CHECK), inspector_name NULL, findings TEXT NULL, date_filed DATE,
   date_issued NULL, valid_until NULL (Dec 31 of issue year), created_at)
 - `employees` (employee_id PK, business_id FK, full_name, position, category ENUM('Food Handler','Non-Food'),
-  is_active default 1, created_at)
+  is_active default 1 (0 = separated, never deleted), created_at, date_hired DATE NULL, date_separated DATE NULL
+  (CHECK separated >= hired)) — separated employees are left out of every count (cards, dashboard, alerts) and show
+  only in the Employees Summary (Health Certificates module), where Health / Admin can reactivate them
 - `health_certificates` (cert_id PK, employee_id FK, certificate_no UNIQUE, issue_date, expiry_date (CHECK expiry > issue),
   issued_by VARCHAR NULL (a name, not an FK), created_at) — status Valid/Expiring Soon/Expired is computed, not stored
 - `properties` (property_id PK, business_id FK, pin UNIQUE, td_no UNIQUE, location,
@@ -162,7 +166,10 @@ Columns named `*_by` (endorsed_by, verified_by, approved_by, received_by) are FK
 - `settings` (setting_key PK VARCHAR(50), setting_value VARCHAR(255), description NULL). Seeded keys:
   lgu_name, province, expiry_warning_days, bp_renewal_deadline (MM-DD), bp_surcharge_rate, bp_interest_rate_monthly,
   bp_interest_max_months, rpt_basic_rate, rpt_sef_rate, rpt_penalty_rate_monthly, rpt_penalty_max,
-  hc_validity_months, upload_folder
+  hc_validity_months, sp_passing_score, upload_folder, terms_version (raise it to make everyone accept again),
+  arta_simple_days (3), arta_complex_days (7), arta_technical_days (20) — RA 11032 processing times (working days)
+  used by the Admin "Pending" tab (`ApplicationQueueService`: all unfinished applications, oldest first, Days Waiting =
+  Mon-Fri working days since date_filed / inspections.created_at, computed not stored; BP "Assessed" = With Applicant)
 - `audit_log` (log_id PK, user_id NULL FK→users,
   action ENUM('LOGIN','LOGOUT','INSERT','UPDATE','DELETE','STATUS_CHANGE','UPLOAD','PRINT'),
   table_name NULL, record_id NULL, details NULL, created_at)
@@ -187,6 +194,11 @@ Seed data must tell ONE consistent story that matches across every screen
 (dashboard numbers must equal what the module screens show). Use dates relative to
 `CURDATE()` in the seed SQL (e.g. `DATE_ADD(CURDATE(), INTERVAL 20 DAY)`) so "Expiring Soon"
 and "Overdue" alerts always appear during demos.
+
+## Policies & Requirements
+- MainForm's top bar shows a "Policies & Requirements" button on the six service screens (`PolicyService`, `PoliciesDialog`).
+  The text is in `Templates/policies/<module>.html`; `{{setting}}`, `{{setting|pct}}`, `{{setting|monthday}}` are filled
+  from the settings table, so the rates shown always equal what the system charges (a test checks every key is seeded).
 
 ## UI style
 - Match the Figma prototype: blue sidebar (#0B6E99), light-blue content background (#7FBFE0), white rounded cards, title font bold.

@@ -38,6 +38,9 @@ same way (phpMyAdmin > SQL tab > paste > Go). They never drop tables, and runnin
 | `2026-10-15_rpt_partial_payments.sql` | Partial RPT payments: drops the one-payment-per-quarter rule and adds payment method, reference no., remarks and voiding to `rpt_payments`. Existing payments become Cash with the same amounts. Ends with a check that must show 0 problem quarters. |
 | `2026-10-15_bp_payments.sql` | Business tax payments (`business_permit_payments`), the shared OR registry (`official_receipts`, filled with every OR already used) and `business_permits.legacy_paid` (permits Paid/Issued before payment recording). Works even if the RPT script was not run yet. Ends with two checks: duplicate OR numbers (must be empty) and the legacy permits. |
 | `2026-10-16_construction_schedule.sql` | Estimated start / completion dates on `construction_projects` (`est_start_date`, `est_end_date`, CHECK end >= start). Existing projects get no dates ("No Schedule" until staff enter them). Ends with a check that must show 0 bad schedules. |
+| `2026-10-16_employee_dates.sql` | Hire / separation dates on `employees` (`date_hired`, `date_separated`, CHECK separated >= hired). Existing employees get no dates ("Not recorded"). Ends with active / separated employees per business. |
+| `2026-10-16_processing_times.sql` | RA 11032 processing-time settings for the Admin Pending Applications queue: `arta_simple_days` 3, `arta_complex_days` 7, `arta_technical_days` 20 (existing values are kept). |
+| `2026-10-17_terms_acceptance.sql` | Terms and Conditions on login: `users.terms_accepted_version` / `terms_accepted_at` and the `terms_version` setting (1.0). Existing users accept once on their next login. Ends with how many users still have to accept. |
 
 ## Tables
 | # | Table | What it stores |
@@ -76,6 +79,9 @@ All passwords are **`password123`**.
 | `building` | Building | Engr. Teresa Castillo | building@example.com | — |
 | `inspector` | Inspector | Insp. Mark Del Rosario | inspector@example.com | — |
 | `owner` | Owner | Cristan Dela Cruz | cristan.bakeshop@example.com (the business e-mail) | Cristan's Bakeshop (business_id 1) |
+
+Every staff account has already accepted Terms and Conditions v1.0; `owner` has not, so the Terms screen appears
+on its first login (Revision 4E).
 
 The e-mails use `@example.com` on purpose, so test password resets never reach a real inbox. To try Forgot Password,
 change one account's e-mail to your own (Settings > Users > Edit User) and set up Gmail first (`docs/EMAIL_SETUP.md`).

@@ -4,6 +4,7 @@
 '''   Cards    : Total Personnel, Valid, Expiring Soon, Expired, Compliance %
 '''   Left     : employees grid with search (Ctrl/Shift-click selects several for "Renew Selected")
 '''   Right    : selected employee - validity bar and tabs (Certificate | History | Renew Now)
+'''   "Employees Summary" (everyone, Owners read-only) shows who still works at each business, separated staff included.
 ''' Every status is computed by StatusService from today's date. No SQL here.
 ''' </summary>
 Public Class HealthCertificateView
@@ -33,6 +34,7 @@ Public Class HealthCertificateView
     Private ReadOnly btnDeactivate As New Button()
     Private ReadOnly btnIssue As New Button()
     Private ReadOnly btnRenewSelected As New Button()
+    Private ReadOnly btnSummary As New Button()
     Private ReadOnly buttonTexts As New Dictionary(Of Button, String())   ' {full, short}
 
     ' Summary cards
@@ -146,7 +148,9 @@ Public Class HealthCertificateView
         actions.FlowDirection = FlowDirection.RightToLeft
         actions.Padding = New Padding(0, 3, 0, 0)
         actions.BackColor = Theme.ContentBackground
-        SetupButton(btnDeactivate, "Deactivate", "Remove", "danger", AddressOf Deactivate_Click)
+        SetupButton(btnSummary, "Employees Summary", "Summary", "secondary", AddressOf Summary_Click)
+        btnSummary.Visible = True          ' Owners may open it too (read-only)
+        SetupButton(btnDeactivate, "Mark Separated", "Separate", "danger", AddressOf Deactivate_Click)
         SetupButton(btnRenewSelected, "Renew Selected", "Bulk Renew", "secondary", AddressOf RenewSelected_Click)
         SetupButton(btnIssue, "Issue / Renew", "Renew", "secondary", AddressOf Issue_Click)
         SetupButton(btnEdit, "Edit Employee", "Edit", "secondary", AddressOf Edit_Click)
@@ -192,7 +196,8 @@ Public Class HealthCertificateView
         businessBox.Width = Math.Max(minBox, Math.Min(maxBox, bar.ClientSize.Width - actions.PreferredSize.Width - gap))
         tips.SetToolTip(btnAdd, "Add a staff member")
         tips.SetToolTip(btnEdit, "Edit the selected employee")
-        tips.SetToolTip(btnDeactivate, "Remove the selected employee from the list (their certificate history is kept)")
+        tips.SetToolTip(btnDeactivate, "The employee no longer works here: enter the separation date (their certificate history is kept)")
+        tips.SetToolTip(btnSummary, "Active and separated employees of every business, with hire and separation dates")
     End Sub
 
     Private Function BuildCards() As Control
@@ -582,6 +587,8 @@ Public Class HealthCertificateView
                              "Days left", If(r.DaysLeft.Value >= 0, r.DaysLeft.Value.ToString(), "Expired")))
         End If
         rows.Add(InfoRow("Position", r.Employee.Position, "Category", r.Employee.Category))
+        rows.Add(InfoRow("Date hired", If(r.Employee.DateHired.HasValue, UiHelper.FormatDate(r.Employee.DateHired.Value), "Not recorded"),
+                         "Length of service", If(r.Employee.DateHired.HasValue, HealthCertificateService.GetLengthOfService(r.Employee), "—")))
         If r.NeedsRenewal AndAlso cert IsNot Nothing Then
             rows.Insert(0, NoteRow(If(r.Status = StatusService.Expired,
                                       "This certificate has expired. The employee should not work until it is renewed.",
@@ -686,18 +693,23 @@ Public Class HealthCertificateView
         End Using
     End Sub
 
+    ''' <summary>The employee no longer works here: asks for the separation date (soft delete, history kept).</summary>
     Private Sub Deactivate_Click(sender As Object, e As EventArgs)
-        If selected Is Nothing OrElse Not canManage Then Return
-        Dim name = selected.Employee.FullName
-        If Not UiHelper.Confirm("Remove " & name & " from the employee list?" & vbCrLf &
-                                "Use this when the employee has resigned. Their certificate history is kept on record.",
-                                "Deactivate employee", "Deactivate", "Cancel", danger:=True) Then Return
-        If HealthCertificateService.DeactivateEmployee(EmployeeRepository.GetById(selected.Employee.EmployeeId)) Then
+        If selected Is Nothing OrElse business Is Nothing OrElse Not canManage Then Return
+        Dim fresh = EmployeeRepository.GetById(selected.Employee.EmployeeId)
+        If fresh Is Nothing Then Return
+        Using dlg As New SeparateEmployeeDialog(business, fresh)
+            If dlg.ShowDialog(FindForm()) <> DialogResult.OK Then Return
             LoadRoster(Nothing)
-            UiHelper.ShowSuccess(name & " was removed from the list.", "Employee deactivated")
-        Else
-            UiHelper.ShowWarning("The employee could not be deactivated.")
-        End If
+            UiHelper.ShowSuccess(fresh.FullName & " was marked as separated on " & UiHelper.FormatDate(dlg.SeparatedOn) & "." & vbCrLf &
+                                 "They are no longer counted. See Employees Summary to view or reactivate them.", "Employee separated")
+        End Using
+    End Sub
+
+    Private Sub Summary_Click(sender As Object, e As EventArgs)
+        Using dlg As New EmployeesSummaryDialog(business?.BusinessId)
+            If dlg.ShowDialog(FindForm()) = DialogResult.OK Then ReloadKeepingSelection()   ' someone was reactivated
+        End Using
     End Sub
 
     Private Sub Issue_Click(sender As Object, e As EventArgs)
